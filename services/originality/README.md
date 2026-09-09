@@ -1,4 +1,16 @@
+<div align="center">
+
+<img src="docs/logo-originalidad.svg" width="132" height="132" alt="Verificador de Originalidad Académica" />
+
 # VicTesis Lab · Verificador de Originalidad Académica
+
+**Detección de plagio y de contenido generado por IA** para el portal **Tesis Ecuador (VicTesis Lab)**.
+
+*Sello animado: aro dorado de escaneo, libro abierto y lupa — integridad académica.*
+
+</div>
+
+---
 
 Servicio de **detección de plagio y de contenido generado por IA** del portal **Tesis Ecuador (VicTesis Lab)**. Contrasta un documento académico contra fuentes abiertas, un corpus local y modelos de lenguaje, y genera **informes PDF** con el detalle de las coincidencias.
 
