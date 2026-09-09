@@ -90,6 +90,12 @@ gcloud run deploy portaltesis-originalidad \
 > por instancia al cargar el modelo semántico (probado: 1 GiB y 2 GiB revientan
 > con OOM). `concurrency 1` evita que dos análisis solapen sus ~3 GiB en un mismo
 > contenedor. Con `min-instances 0` no hay coste en reposo.
+>
+> **Documentos largos (desplegado):** un texto de ~100 mil caracteres con la
+> concurrencia por defecto supera los 4 GiB de memoria; el servicio desplegado
+> usa `MAX_CHUNKS=48` (muestreo representativo de un documento completo) y
+> `FETCH_CONCURRENCY=4` — un análisis así tarda ~6 min y cabe en el timeout de
+> 900 s. El portal espera hasta 850 s (`ORIGINALITY_TIMEOUT_MS`).
 > La primera petición tras un arranque en frío descarga el modelo a
 > `TRANSFORMERS_CACHE` (~40–60 s); las siguientes son instantáneas mientras la
 > instancia vive.

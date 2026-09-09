@@ -145,6 +145,23 @@ function providerOf(url: string): string {
   return hit ? hit.id : 'local';
 }
 
+/**
+ * Lee la respuesta JSON del verificador.
+ *
+ * El puente del portal (`/api/originality/*`) responde JSON incluso en sus
+ * errores, pero cuando el análisis de un documento largo excede el tiempo de
+ * espera de Cloud Run puede llegar una página HTML de pasarela en su lugar.
+ * Parsear ese HTML lanzaría el crudo "Unexpected token '<' ... is not valid
+ * JSON"; este helper lo convierte en un mensaje claro.
+ */
+async function readCheckerJson(response: Response, offlineMessage: string): Promise<any> {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(offlineMessage);
+  }
+  return response.json();
+}
+
 /* ------------------------------------------------------------------ *
  * Contexto
  * ------------------------------------------------------------------ */
@@ -341,7 +358,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
         const body = new FormData();
         body.append('file', file);
         const response = await fetch('/api/originality/extract', { method: 'POST', body });
-        const data = await response.json();
+        const data = await readCheckerJson(response, t('plag.serviceOffline'));
         if (!response.ok) throw new Error(data.error || t('plag.errorRead'));
 
         setText(data.text);
@@ -443,7 +460,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, excludeCitations }),
       });
-      const data = await response.json();
+      const data = await readCheckerJson(response, t('plag.serviceOffline'));
       if (!response.ok) throw new Error(data.error || t('plag.errorAnalysis'));
 
       setResult(data);
@@ -500,7 +517,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    const data = await response.json();
+    const data = await readCheckerJson(response, t('plag.serviceOffline'));
     if (!response.ok) throw new Error(data.error || t('plag.errorAi'));
     setAiResult(data as AiResult);
   }, [text, t]);
