@@ -1,0 +1,493 @@
+@import "tailwindcss";
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ==========================================================================
+   Sistema visual — Tesis Ecuador · Portal Universitario
+   ==========================================================================
+   Tema claro institucional, único. Superficie blanca sobre un lienzo gris muy
+   suave, bordes de 1px y sombras de elevación mínima: el peso visual lo carga
+   la tipografía y el color de acento de cada módulo, no el fondo.
+   ========================================================================== */
+
+:root {
+  /* Lienzo con algo mas de cuerpo que el blanco: sin ese escalon, una tarjeta
+     blanca sobre un fondo casi blanco no se lee como tarjeta. */
+  --bg-canvas: #eaeff6;
+  --text-base: #0f172a;
+  --border-soft: #dbe3ee;
+  /* Identidad institucional: azul marino de la barra superior y oro de acento. */
+  --navy: #002B49;
+  --navy-deep: #001b30;
+  --gold: #c9a227;
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-base);
+}
+
+/* Superficie base de todo el portal. */
+.surface {
+  background: #ffffff;
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+/* Tarjeta interactiva: se eleva y define su borde al pasar el cursor. */
+.surface-interactive {
+  background: #ffffff;
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 0.24s cubic-bezier(0.34, 1.4, 0.64, 1),
+    border-color 0.24s ease, transform 0.24s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.surface-interactive:hover {
+  box-shadow: 0 18px 34px -12px rgba(0, 43, 73, 0.28);
+  border-color: #c3cedd;
+  transform: translateY(-3px);
+}
+
+/* Superficie hundida dentro de una tarjeta (inputs, filas, chips). */
+.inset-surface {
+  background: #f8fafc;
+  border: 1px solid var(--border-soft);
+}
+
+.field {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+.field::placeholder {
+  color: rgba(15, 23, 42, 0.4);
+}
+.field:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+/* Barra de scroll discreta para paneles internos (chat, listas). */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.15);
+  border-radius: 999px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.28);
+}
+
+/* ==========================================================================
+   CSS Keyframes y animaciones propias del portal académico Tesis Ecuador
+   ========================================================================== */
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+@keyframes floatReverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-1deg);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.4), 0 0 30px rgba(59, 130, 246, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(16, 185, 129, 0.7), 0 0 45px rgba(59, 130, 246, 0.4);
+  }
+}
+
+@keyframes pulseGoldGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.4), 0 0 30px rgba(0, 43, 73, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(245, 158, 11, 0.75), 0 0 50px rgba(37, 99, 235, 0.5);
+  }
+}
+
+@keyframes shimmerEffect {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes logoSpinCycle {
+  0%, 40% {
+    transform: perspective(600px) rotateY(0deg);
+  }
+  48%, 52% {
+    transform: perspective(600px) rotateY(90deg) scale(0.92);
+  }
+  60%, 92% {
+    transform: perspective(600px) rotateY(180deg);
+  }
+  96%, 100% {
+    transform: perspective(600px) rotateY(360deg);
+  }
+}
+
+@keyframes orbitRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Custom Animation Utility Classes */
+.animate-float-slow {
+  animation: floatSlow 5s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: floatReverse 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+.animate-pulse-gold {
+  animation: pulseGoldGlow 3s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0) 100%);
+  background-size: 200% 100%;
+  animation: shimmerEffect 2.5s infinite;
+}
+
+.animate-logo-morph {
+  animation: logoSpinCycle 8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  transform-style: preserve-3d;
+}
+
+.animate-orbit {
+  animation: orbitRotate 12s linear infinite;
+}
+
+.animate-gradient-shift {
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+}
+
+/* Card and element hover dynamic lifting */
+.hover-lift {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.12);
+}
+
+/* ==========================================================================
+   Entrada del panel principal y lanzador del Tutor IA
+   ==========================================================================
+   La reticula bento entra escalonada: cada tarjeta declara su turno con
+   --rise-delay en linea, de modo que el orden de lectura lo marca el propio
+   movimiento y no hace falta una libreria de animacion.
+   ========================================================================== */
+
+@keyframes cardRise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.card-rise {
+  opacity: 0;
+  animation: cardRise 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+/* Halo del lanzador flotante: dos anillos que respiran a distinto ritmo, para
+   que el boton se note sin llegar a parpadear. */
+@keyframes tutorHalo {
+  0%, 100% {
+    box-shadow: 0 8px 24px -6px rgba(0, 27, 48, 0.45), 0 0 0 0 rgba(201, 162, 39, 0.5);
+  }
+  50% {
+    box-shadow: 0 12px 30px -6px rgba(0, 27, 48, 0.55), 0 0 0 12px rgba(201, 162, 39, 0);
+  }
+}
+
+@keyframes tutorBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+
+@keyframes tutorSpark {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.tutor-launcher {
+  animation: tutorHalo 2.8s ease-in-out infinite;
+  transition: transform 0.25s cubic-bezier(0.34, 1.5, 0.64, 1), background-color 0.25s ease;
+}
+.tutor-launcher:hover {
+  transform: translateY(-3px) scale(1.03);
+  animation-play-state: paused;
+}
+.tutor-launcher .tutor-icon {
+  animation: tutorBob 2.4s ease-in-out infinite;
+}
+.tutor-launcher .tutor-spark {
+  animation: tutorSpark 2s ease-in-out infinite;
+}
+
+/* "Robotsito" del Tutor IA: CSS puro para sentirse vivo — flota con vaivén,
+   parpadea y enciende su antena. Hereda color con `currentColor`. */
+.rf {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  animation: rfFloat 3.4s ease-in-out infinite;
+}
+.rf-head {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  top: 14%;
+  bottom: 3%;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  border-radius: 32% 32% 36% 36%;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+}
+.rf-eye {
+  position: absolute;
+  top: 25%;
+  width: 16%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: rfBlink 4.8s ease-in-out infinite;
+}
+.rf-eye-l { left: 20%; }
+.rf-eye-r { right: 20%; }
+.rf-mouth {
+  position: absolute;
+  left: 50%;
+  bottom: 16%;
+  width: 26%;
+  height: 1px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.85;
+}
+.rf-antenna {
+  position: absolute;
+  left: 50%;
+  top: 3%;
+  width: 1.5px;
+  height: 15%;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.9;
+}
+.rf-antenna::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 1px;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: rfPulse 2.1s ease-in-out infinite;
+}
+@keyframes rfFloat {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-1.5px) rotate(2deg); }
+}
+@keyframes rfBlink {
+  0%, 86%, 100% { transform: scaleY(1); }
+  90%, 94% { transform: scaleY(0.12); }
+}
+@keyframes rfPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* Barrido de luz sobre la banda de bienvenida. */
+@keyframes heroSheen {
+  0% { transform: translateX(-120%) skewX(-18deg); }
+  55%, 100% { transform: translateX(320%) skewX(-18deg); }
+}
+.hero-sheen {
+  animation: heroSheen 7s ease-in-out infinite;
+}
+
+/* Nadie deberia tener que soportar movimiento que no pidio. */
+@media (prefers-reduced-motion: reduce) {
+  .card-rise {
+    opacity: 1;
+    animation: none;
+  }
+  .tutor-launcher,
+  .tutor-launcher .tutor-icon,
+  .tutor-launcher .tutor-spark,
+  .rf,
+  .rf-head,
+  .rf-eye,
+  .rf-antenna,
+  .rf-antenna::after,
+  .hero-sheen {
+    animation: none;
+  }
+  .hero-sheen {
+    display: none;
+  }
+}
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+  header, footer, button, .no-print {
+    display: none !important;
+  }
+  section, div {
+    background: transparent !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: none !important;
+  }
+}
+
+
+
+/* Oculta la barra de scroll horizontal en las tiras de pestañas y chips */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ==========================================================================
+   Emblema «Tesis Ecuador» (TesisEcuadorLogo.tsx)
+   ==========================================================================
+   Animaciones discretas de cabecera: el aro dorado gira lento, la marca de
+   verificación se dibuja al montar y un destello recorre el anillo cada tanto.
+   ========================================================================== */
+
+@keyframes teRingSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes teCheckDraw {
+  from {
+    stroke-dashoffset: 34;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes teShineSweep {
+  0% {
+    transform: rotate(-95deg);
+    opacity: 0;
+  }
+  6% {
+    opacity: 0.85;
+  }
+  34% {
+    transform: rotate(265deg);
+    opacity: 0;
+  }
+  100% {
+    transform: rotate(265deg);
+    opacity: 0;
+  }
+}
+
+.te-ring,
+.te-shine {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+}
+
+.te-ring {
+  animation: teRingSpin 16s linear infinite;
+}
+
+.te-shine {
+  animation: teShineSweep 9s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  animation-delay: 2.4s;
+}
+
+.te-check {
+  stroke-dasharray: 34;
+  stroke-dashoffset: 34;
+  animation: teCheckDraw 1.15s cubic-bezier(0.65, 0, 0.35, 1) 0.35s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .te-ring,
+  .te-shine,
+  .te-check {
+    animation: none !important;
+  }
+  .te-check {
+    stroke-dashoffset: 0;
+  }
+  .te-shine {
+    opacity: 0;
+  }
+}

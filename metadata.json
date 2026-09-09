@@ -1,0 +1,6 @@
+{
+  "name": "Tesis Ecuador · Portal Universitario",
+  "description": "Recursos, tutoría y formación académica para estudiantes universitarios de todo el Ecuador: viabilidad del tema, matriz de consistencia, ecuaciones Scopus, normas APA 7 y tutor IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

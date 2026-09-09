@@ -1,0 +1,26 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Cuentas locales del portal (contiene hashes de contrasena)
+.data/
+
+# Modelos ONNX del detector (~1,1 GB en tres archivos).
+# Versionarlos infló .git hasta 729 MB y ralentizó cada operación de git y cada
+# sincronización de OneDrive. Se descargan solos desde Hugging Face en el primer
+# análisis; ver services/originality/docs/OPERACION.md
+**/.models/
+
+# Cache de precompilado de Vite (cacheDir en vite.config.ts)
+.vite/
+
+# Configuración y worktrees temporales de Claude Code (los worktrees suman
+# 5,5 GB). Sin esto, el auto-escaneo de contenido de Tailwind v4 los recorre al
+# compilar index.css y el primer request de CSS cuelga el servidor de desarrollo
+# por minutos; además nada de esto debe publicarse en el repositorio remoto.
+.claude/

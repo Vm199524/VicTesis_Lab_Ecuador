@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Free Turnitin Plagiarism Checker · Mapa de arquitectura runtime",
+    "quality_profile": "showcase",
+    "viewBox": [1400, 700]
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "Usuarios",
+      "sublabel": "Navegador · Estudiantes",
+      "pos": [30, 250],
+      "size": [120, 60]
+    },
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "SPA React",
+      "sublabel": "Vite · :5173",
+      "pos": [200, 250],
+      "size": [140, 60]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Express.js",
+      "sublabel": "Puerto 5000",
+      "pos": [420, 250],
+      "size": [140, 60]
+    },
+    {
+      "id": "extract",
+      "type": "backend",
+      "label": "Extractor documentos",
+      "sublabel": "PDF, DOCX, DOC, RTF, TXT",
+      "pos": [640, 100],
+      "size": [160, 60]
+    },
+    {
+      "id": "text",
+      "type": "backend",
+      "label": "Motor texto",
+      "sublabel": "Tokenización · Análisis",
+      "pos": [640, 250],
+      "size": [160, 60]
+    },
+    {
+      "id": "plagiarism",
+      "type": "backend",
+      "label": "Motor plagio",
+      "sublabel": "Scoring · Concurrencia",
+      "pos": [640, 400],
+      "size": [160, 60]
+    },
+    {
+      "id": "sources",
+      "type": "backend",
+      "label": "Descubridor fuentes",
+      "sublabel": "Wikipedia, CrossRef, OpenAlex",
+      "pos": [880, 250],
+      "size": [160, 70]
+    },
+    {
+      "id": "wikipedia",
+      "type": "external",
+      "label": "Wikipedia API",
+      "sublabel": "en/es · MediaWiki",
+      "pos": [1150, 80],
+      "size": [140, 60]
+    },
+    {
+      "id": "academic",
+      "type": "external",
+      "label": "Índices académicos",
+      "sublabel": "CrossRef, OpenAlex",
+      "pos": [1150, 220],
+      "size": [140, 60]
+    },
+    {
+      "id": "search",
+      "type": "external",
+      "label": "Buscadores web",
+      "sublabel": "DuckDuckGo, Serper, Brave",
+      "pos": [1150, 360],
+      "size": [140, 60]
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "Caché de páginas",
+      "sublabel": "In-memory LRU",
+      "pos": [880, 450],
+      "size": [160, 60]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Cliente",
+      "wraps": ["users", "frontend"]
+    },
+    {
+      "kind": "region",
+      "label": "Aplicación · Backend",
+      "wraps": ["api", "extract", "text", "plagiarism", "sources", "cache"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Fuentes externas",
+      "wraps": ["wikipedia", "academic", "search"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "users-fe",
+      "from": "users",
+      "to": "frontend",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fe-api",
+      "from": "frontend",
+      "to": "api",
+      "label": "POST /api/*",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-extract",
+      "from": "api",
+      "to": "extract",
+      "label": "detecta formato"
+    },
+    {
+      "id": "api-plagiarism",
+      "from": "api",
+      "to": "plagiarism",
+      "label": "POST /plagiarism-check"
+    },
+    {
+      "id": "plagiarism-text",
+      "from": "plagiarism",
+      "to": "text",
+      "label": "chunking, tokenize"
+    },
+    {
+      "id": "plagiarism-sources",
+      "from": "plagiarism",
+      "to": "sources",
+      "label": "findSources()",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sources-wikipedia",
+      "from": "sources",
+      "to": "wikipedia",
+      "label": "búsqueda + extract",
+      "variant": "emphasis",
+      "labelAt": [1040, 160]
+    },
+    {
+      "id": "sources-academic",
+      "from": "sources",
+      "to": "academic",
+      "label": "keywords API",
+      "labelAt": [1040, 334]
+    },
+    {
+      "id": "sources-search",
+      "from": "sources",
+      "to": "search",
+      "label": "exact phrase",
+      "labelAt": [1040, 410]
+    },
+    {
+      "id": "plagiarism-cache",
+      "from": "plagiarism",
+      "to": "cache",
+      "label": "read-through LRU",
+      "labelAt": [770, 480]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Flujo de detección",
+      "items": [
+        "Usuario carga PDF/DOCX → extractText() detecta formato por magic numbers",
+        "Texto → chunking(12-60 palabras) → búsqueda de fuentes (5 proveedores)",
+        "Scoring: containment(4-gram, 7-gram) + cosine TF-IDF + winnowing + longest run"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Estrategia de búsqueda",
+      "items": [
+        "Dual-query: exact phrase (8 palabras, alta precisión) + keywords (10 palabras, high recall)",
+        "Round-robin merge de resultados (Wikipedia EN/ES, CrossRef, OpenAlex, DuckDuckGo)",
+        "Caché LRU en memoria (500 URLs) → evita re-fetches redundantes"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Capacidad y desempeño",
+      "items": [
+        "Máx: 120.000 caracteres · 120 chunks analizados (muestreo adaptativo)",
+        "Concurrencia: 6 requests paralelos (pool) · Timeout: 8s por URL",
+        "Métricas expuestas: containment%, cosine%, fingerprint%, longest_run_tokens"
+      ]
+    }
+  ]
+}
