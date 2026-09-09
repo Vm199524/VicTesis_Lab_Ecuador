@@ -190,11 +190,9 @@ EXPOSE 3000
 CMD ["node", "dist/server.cjs"]
 ```
 
-**Vercel** — framework **Vite**, comando de build `npm run build`; expón la API Express como función serverless.
+**Firebase Hosting + Cloud Run** — Hosting publica `dist/` como sitio estático y **reenvía `/api/**` a la API Express que corre en Cloud Run** (misma imagen de arriba). Así el portal queda en `https://…web.app` y la API en el mismo origen.
 
-**Firebase Hosting** — publica `dist/` como sitio estático y `server.ts` como Cloud Function para la API y `/api/ask-tutor`.
-
-El **servicio de originalidad** se despliega aparte (tiene su propio `Dockerfile`/`render.yaml` en `services/originality`).
+El **servicio de originalidad** se despliega aparte como su propio servicio Cloud Run (tiene su `Dockerfile` en `services/originality`) y el portal lo alcanza con `ORIGINALITY_API_URL`.
 
 ---
 
