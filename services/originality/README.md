@@ -6,7 +6,6 @@
 
 **Detección de plagio y de contenido generado por IA** para el portal **Tesis Ecuador (VicTesis Lab)**.
 
-*Sello animado: aro dorado de escaneo, libro abierto y lupa — integridad académica.*
 
 </div>
 
