@@ -162,7 +162,6 @@ export default function App() {
             <div className="animate-in fade-in duration-300 w-full">
               <SlideViewer
                 onNavigateToTool={handleNavigateToTool}
-                onOpenWhatsappModal={() => setIsWhatsappModalOpen(true)}
               />
             </div>
           </Suspense>

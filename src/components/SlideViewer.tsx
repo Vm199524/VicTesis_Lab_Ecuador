@@ -9,18 +9,15 @@ import {
   Minimize,
   Lightbulb,
   ArrowRight,
-  CheckCircle2,
-  Sparkles
+  CheckCircle2
 } from 'lucide-react';
 
 interface SlideViewerProps {
   onNavigateToTool: (targetId: string) => void;
-  onOpenWhatsappModal: () => void;
 }
 
 export const SlideViewer: React.FC<SlideViewerProps> = ({
   onNavigateToTool,
-  onOpenWhatsappModal,
 }) => {
   const { t, tf } = usePreferences();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -234,7 +231,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
         </div>
 
         {/* Thumbnail Dots */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none">
+        <div className="flex flex-1 items-center justify-center gap-1.5 overflow-x-auto py-1 scrollbar-none">
           {SLIDES_DATA.map((slide, idx) => (
             <button
               key={slide.id}
@@ -247,18 +244,6 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
               title={`${idx + 1}: ${slide.title}`}
             />
           ))}
-        </div>
-
-        {/* Action button */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onOpenWhatsappModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition-all"
-            title={t('support.title')}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="hidden sm:inline">{t('support.button')}</span>
-          </button>
         </div>
       </div>
     </div>

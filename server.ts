@@ -35,7 +35,7 @@ let aiClient: GoogleGenAI | null = null;
 async function getAiClient(): Promise<GoogleGenAI> {
   if (!aiClient) {
     const { GoogleGenAI } = await import('@google/genai');
-    aiClient = new GoogleGenAI({});
+    aiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   }
   return aiClient;
 }
@@ -44,7 +44,8 @@ const SYSTEM_INSTRUCTION = `Eres el "Tutor IA Metodológico" de Tesis Ecuador, u
 Contexto: Tesis Ecuador es un portal universitario independiente y de acceso libre, dirigido a estudiantes de cualquier universidad del país.
 Tu objetivo es explicar conceptos metodológicos con rigor científico, pedagogía universitaria y ejemplos aplicados a la tesis.
 Cada universidad tiene su propio formato de titulación: da orientación general y recuerda al estudiante que debe contrastarla con el reglamento y el formato vigentes de su institución. No inventes normativas ni plazos de universidades concretas.
-Responde únicamente sobre metodología, titulación y el contenido real de la plataforma Tesis Ecuador. Si la consulta es ajena a ese ámbito (temas personales, actualidad, otros oficios, etc.), indícalo con amabilidad y redirige a un tema de la plataforma; no improvises módulos que no existan.`;
+Responde únicamente sobre metodología, titulación y el contenido real de la plataforma Tesis Ecuador. Si la consulta es ajena a ese ámbito (temas personales, actualidad, otros oficios, etc.), indícalo con amabilidad y redirige a un tema de la plataforma; no improvises módulos que no existan.
+Estilo: responde en lenguaje natural y conversacional, como un tutor real que dialoga con el estudiante. Evita plantillas, enumeraciones rígidas, títulos repetidos y el tono de manual. Adapta la extensión a la pregunta concreta y, cuando des pasos o conceptos, explícalos en frases fluidas con ejemplos cercanos. Si algo no se entiende o falta contexto, pregunta con naturalidad.`;
 
 // Comprehensive expert knowledge database for the platform
 function getDomainResponse(query: string): string {
@@ -377,12 +378,18 @@ app.post('/api/ask-tutor', async (req, res) => {
       return;
     }
 
+    const apiKey = process.env.GEMINI_API_KEY;
+
     // Motor determinista del sistema (gratis y preciso): responde al instante
-    // sobre hitos (Avance 1/2/3) y panorama de la plataforma, sin gastar un LLM.
-    const platformReply = platformKnowledgeIntent(message);
-    if (platformReply) {
-      res.json({ reply: platformReply });
-      return;
+    // sobre hitos (Avance 1/2/3) y panorama de la plataforma. Solo se usa cuando
+    // NO hay un modelo conectado; con LLM esas preguntas también se responden en
+    // lenguaje natural y este motor queda únicamente como respaldo.
+    if (!apiKey) {
+      const platformReply = platformKnowledgeIntent(message);
+      if (platformReply) {
+        res.json({ reply: platformReply });
+        return;
+      }
     }
 
     // Límite de alcance: fuera del sistema y de los temas de tesis no se
@@ -414,8 +421,6 @@ app.post('/api/ask-tutor', async (req, res) => {
       res.json({ reply: offScopeReply() });
       return;
     }
-
-    const apiKey = process.env.GEMINI_API_KEY;
 
     // First attempt Gemini API if key is present
     if (apiKey) {
@@ -450,7 +455,7 @@ app.post('/api/ask-tutor', async (req, res) => {
           contents: prompt,
           config: {
             systemInstruction,
-            temperature: 0.3,
+            temperature: 0.7,
           },
         });
 
