@@ -82,13 +82,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               style={{ fontFamily: "'Playfair Display', Georgia, serif", letterSpacing: '-0.005em' }}
             >
               <span className="bg-gradient-to-r from-white via-[#f6d97a] to-[#c9a227] bg-clip-text text-transparent group-hover:from-white group-hover:via-white group-hover:to-[#f0cf62]">
-                Portal Tesis
+                Ecu Tesis
               </span>
             </span>
             <span className="mt-1 flex items-center gap-1.5 truncate">
               <span className="w-5 h-px bg-gradient-to-r from-[#c9a227] to-transparent shrink-0" />
               <span className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-blue-100/80">
-                Ecuador · De la idea al título
+                De la idea al proyecto
               </span>
             </span>
           </span>
