@@ -72,19 +72,42 @@ async function deliverVerification(user: StoredUser): Promise<string | undefined
   return process.env.NODE_ENV === 'production' ? undefined : link;
 }
 
-function setSessionCookie(res: Response, userId: string): void {
-  res.cookie(sessionCookie.name, createSessionToken(userId), {
+/**
+ * Firma la cookie y devuelve el token por si el endpoint quiere entregarlo al
+ * navegador por otra vía.
+ *
+ * La cookie HttpOnly sigue siendo la vía directa (p. ej. contra *.run.app), pero
+ * Firebase Hosting NO reenvía la cookie entrante al reescribir a Cloud Run, así
+ * que los despliegues tras hosting entregan además el token al cliente para que
+ * lo envíe por cabecera.
+ */
+function setSessionCookie(res: Response, userId: string): string {
+  const token = createSessionToken(userId);
+  res.cookie(sessionCookie.name, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     maxAge: sessionCookie.maxAge,
     path: '/',
   });
+  return token;
+}
+
+/**
+ * Token de sesión presente en la petición: primero la cookie (vía directa) y
+ * después las cabeceras que el proxy de hosting sí reenvía al backend.
+ */
+function sessionTokenFrom(req: Request): string | undefined {
+  const fromCookie = readCookie(req.headers.cookie, sessionCookie.name);
+  if (fromCookie) return fromCookie;
+  const bearer = req.headers.authorization;
+  if (typeof bearer === 'string' && bearer.startsWith('Bearer ')) return bearer.slice(7);
+  const custom = req.headers['x-session-token'];
+  return typeof custom === 'string' ? custom : undefined;
 }
 
 function currentUser(req: Request): PublicUser | null {
-  const token = readCookie(req.headers.cookie, sessionCookie.name);
-  const userId = readSessionToken(token);
+  const userId = readSessionToken(sessionTokenFrom(req));
   if (!userId) return null;
   const user = findUserById(userId);
   return user ? toPublicUser(user) : null;
@@ -155,8 +178,8 @@ export function registerAuthRoutes(app: Express): void {
     }
 
     if (!needsVerification) {
-      setSessionCookie(res, result.user.id);
-      res.json({ user: toPublicUser(result.user) });
+      const token = setSessionCookie(res, result.user.id);
+      res.json({ user: toPublicUser(result.user), token });
       return;
     }
 
@@ -192,8 +215,8 @@ export function registerAuthRoutes(app: Express): void {
 
   /** Destino del enlace del correo. Confirma la cuenta y deja la sesión abierta. */
   app.get('/api/auth/verify', (req, res) => {
-    const token = typeof req.query.token === 'string' ? req.query.token : undefined;
-    const userId = readVerificationToken(token);
+    const rawToken = typeof req.query.token === 'string' ? req.query.token : undefined;
+    const userId = readVerificationToken(rawToken);
     if (!userId) {
       res.redirect('/?auth=verify-expired');
       return;
@@ -205,8 +228,10 @@ export function registerAuthRoutes(app: Express): void {
       return;
     }
 
-    setSessionCookie(res, user.id);
-    res.redirect('/?auth=verified');
+    const token = setSessionCookie(res, user.id);
+    // El token viaja en el fragmento (#): no se registra en logs del servidor y el
+    // cliente lo guarda para enviarlo por cabecera en los despliegues tras hosting.
+    res.redirect(`/?auth=verified#s=${token}`);
   });
 
   app.post('/api/auth/login', (req, res) => {
@@ -230,8 +255,8 @@ export function registerAuthRoutes(app: Express): void {
     }
 
     clearRateLimit(key);
-    setSessionCookie(res, result.user.id);
-    res.json({ user: toPublicUser(result.user) });
+    const token = setSessionCookie(res, result.user.id);
+    res.json({ user: toPublicUser(result.user), token });
   });
 
   app.post('/api/auth/logout', (_req, res) => {
@@ -374,8 +399,8 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       const user = upsertOAuthUser(provider, profile.id, profile.name, profile.email);
-      setSessionCookie(res, user.id);
-      res.redirect('/?auth=ok');
+      const token = setSessionCookie(res, user.id);
+      res.redirect(`/?auth=ok#s=${token}`);
     } catch (error) {
       console.error(`Error en el callback de ${provider}:`, error);
       res.redirect('/?auth=error');

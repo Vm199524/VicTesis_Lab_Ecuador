@@ -48,9 +48,44 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
- * Sesión del estudiante. La cookie es HttpOnly, así que el navegador nunca ve el
- * token: este contexto solo conoce el perfil público que devuelve el servidor.
+ * Firebase Hosting no reenvía la cookie entrante al reescribir hacia Cloud Run,
+ * así que el token se guarda además en localStorage y viaja por la cabecera
+ * `x-session-token` (el proxy sí la reenvía). La cookie HttpOnly se mantiene como
+ * vía para los accesos directos a *.run.app. La sesión siempre se valida en el
+ * servidor contra el token firmado; aquí nunca se guarda nada sensible más que
+ * el propio token, y el perfil público que devuelve el servidor.
  */
+const TOKEN_KEY = 'tesis_session_token';
+
+function readStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // Sin almacenamiento local la sesión simplemente no persiste entre pestañas.
+  }
+}
+
+function clearStoredToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Nada que limpiar.
+  }
+}
+
+function sessionHeaders(): Record<string, string> {
+  const token = readStoredToken();
+  return token ? { 'x-session-token': token } : {};
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,9 +100,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let cancelled = false;
 
     void (async () => {
+      // Vuelta de OAuth o de verificación: el servidor entrega el token en el
+      // fragmento (#s=...) para que sobreviva al hosting. Se guarda y se limpia
+      // la URL sin recargar.
+      const hashToken = window.location.hash.match(/[#&]s=([^&]+)/);
+      if (hashToken) {
+        try {
+          storeToken(decodeURIComponent(hashToken[1]));
+        } catch {
+          // Fragmento inválido: se ignora.
+        }
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + window.location.search
+        );
+      }
+
       try {
         const [meResponse, providersResponse] = await Promise.all([
-          fetch('/api/auth/me', { credentials: 'same-origin' }),
+          fetch('/api/auth/me', { headers: sessionHeaders(), credentials: 'same-origin' }),
           fetch('/api/auth/providers', { credentials: 'same-origin' }),
         ]);
 
@@ -97,12 +149,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const response = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...sessionHeaders() },
           credentials: 'same-origin',
           body: JSON.stringify(body),
         });
         const data = (await response.json()) as {
           user?: SessionUser;
+          token?: string;
           error?: string;
           pendingVerification?: boolean;
           message?: string;
@@ -125,6 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             verifyUrl: data.verifyUrl,
           };
         }
+        if (data.token) storeToken(data.token);
         if (data.user) setUser(data.user);
         return { ok: true };
       } catch {
@@ -150,6 +204,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {
           // Aunque falle la petición, la sesión local se cierra.
         }
+        clearStoredToken();
         setUser(null);
       },
     }),
