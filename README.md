@@ -1,37 +1,21 @@
 <!--
   Tesis Ecuador · Portal Universitario
   --------------------------------------------------------------------------
-  El bloque <style> añade micro-animaciones CSS al encabezado en los visores
-  que renderizan CSS dentro del README (VS Code, editores, GitHub Desktop).
-  En github.com el <style> se ignora y todo queda estático y legible: el
-  contenido nunca depende de la animación (degradación elegante).
+  El logo es un SVG independiente (docs/logo-tesis-ecuador.svg) con la
+  animación embebida del emblema real de la app (aro dorado que gira,
+  destello en el anillo y marca de verificación que se dibuja al cargar).
+  Se referencia como imagen <img> para que GitHub la sirva sin tocar y la
+  animación se ejecute en el navegador.
 -->
 <div align="center">
 
-<a href="#portal-tesis-ecuador">
-<!-- Logo principal: réplica vectorial del favicon de la app
-     (círculo azul marino #002B49, anillo dorado #c9a227, libro abierto y check dorado). -->
-<svg viewBox="0 0 100 100" width="120" height="120" role="img" aria-label="Tesis Ecuador" class="te-logo" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="50" cy="50" r="49" fill="#002B49"/>
-  <circle cx="50" cy="50" r="42" fill="none" stroke="#c9a227" stroke-width="3" opacity="0.9"/>
-  <path d="M50 61 C44 56 37 55 30 55.5 L30 40.5 C37 40 44 41 50 46 Z" fill="#F8FAFC"/>
-  <path d="M50 61 C56 56 63 55 70 55.5 L70 40.5 C63 40 56 41 50 46 Z" fill="#E2E8F0"/>
-  <path d="M38 50.5 L46.5 59 L63 39.5" fill="none" stroke="#c9a227" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-</a>
+<img src="docs/logo-tesis-ecuador.svg" width="132" height="132" alt="Logo Tesis Ecuador" />
 
 # Portal Tesis Ecuador
 
 **Plataforma web interactiva de apoyo metodológico para estudiantes universitarios de todo el Ecuador en proceso de titulación.**
 
 *Recursos, tutoría y formación académica* — de la **viabilidad del tema** a la **defensa**: metodología cuantitativa, matriz de consistencia, ecuaciones Scopus, normas APA 7, verificación de originalidad y un **Tutor IA** que entiende lenguaje natural.
-
-<!-- Animaciones CSS: flotación suave del logo (se ignoran en github.com). -->
-<style>
-.te-logo{animation:teFloat 5s ease-in-out infinite}
-@keyframes teFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
-@media (prefers-reduced-motion: reduce){.te-logo{animation:none}}
-</style>
 
 [![React 19](https://img.shields.io/badge/React-19-%23002B49?logo=react&logoColor=white&labelColor=%23002B49)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-%23002B49?logo=typescript&logoColor=white&labelColor=%23002B49)](https://www.typescriptlang.org)

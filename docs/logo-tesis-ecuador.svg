@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%" role="img" aria-label="Tesis Ecuador">
+  <!--
+    Emblema «Tesis Ecuador» — réplica de src/components/TesisEcuadorLogo.tsx
+    Animaciones embebidas (keyframes te-* de src/index.css): el aro dorado
+    punteado gira (16 s), un destello recorre el anillo y la marca de
+    verificación se dibuja al cargar. Al cargarse como imagen <img>, el
+    navegador ejecuta estas animaciones CSS internas.
+  -->
+  <style>
+    .te-ring, .te-shine { transform-box: view-box; transform-origin: 50px 50px; }
+    .te-ring  { animation: teRingSpin 16s linear infinite; }
+    .te-shine { animation: teShineSweep 9s cubic-bezier(.45, 0, .2, 1) infinite; animation-delay: 2.4s; }
+    .te-check { stroke-dasharray: 34; stroke-dashoffset: 34; animation: teCheckDraw 1.15s cubic-bezier(.65, 0, .35, 1) .35s forwards; }
+    @keyframes teRingSpin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    @keyframes teShineSweep {
+      0%   { transform: rotate(-95deg); opacity: 0; }
+      6%   { opacity: 0.85; }
+      34%  { transform: rotate(265deg); opacity: 0; }
+      100% { transform: rotate(265deg); opacity: 0; }
+    }
+    @keyframes teCheckDraw {
+      from { stroke-dashoffset: 34; }
+      to   { stroke-dashoffset: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .te-ring, .te-shine, .te-check { animation: none !important; }
+      .te-check { stroke-dashoffset: 0; }
+      .te-shine { opacity: 0; }
+    }
+  </style>
+
+  <defs>
+    <radialGradient id="teDisc" cx="38%" cy="30%" r="78%">
+      <stop offset="0%" stop-color="#0a4d7a" />
+      <stop offset="55%" stop-color="#00365c" />
+      <stop offset="100%" stop-color="#002B49" />
+    </radialGradient>
+    <linearGradient id="teGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e6c765" />
+      <stop offset="50%" stop-color="#c9a227" />
+      <stop offset="100%" stop-color="#a8811a" />
+    </linearGradient>
+  </defs>
+
+  <!-- Disco del sello -->
+  <circle cx="50" cy="50" r="47" fill="url(#teDisc)" />
+
+  <!-- Filo dorado exterior -->
+  <circle cx="50" cy="50" r="45.5" fill="none" stroke="url(#teGold)" stroke-width="1.4" />
+
+  <!-- Guiño a la bandera del Ecuador: arco fino en la base del anillo -->
+  <g stroke-width="2.4" stroke-linecap="butt" opacity="0.95">
+    <path d="M 71.00 86.37 A 42 42 0 0 1 57.29 91.36" stroke="#FFD100" />
+    <path d="M 57.29 91.36 A 42 42 0 0 1 42.71 91.36" stroke="#0033A0" />
+    <path d="M 42.71 91.36 A 42 42 0 0 1 29.00 86.37" stroke="#EF3340" />
+  </g>
+
+  <!-- Aro dorado punteado: gira lento (16 s lineales) -->
+  <circle class="te-ring" cx="50" cy="50" r="41" fill="none"
+          stroke="url(#teGold)" stroke-width="1.6" stroke-linecap="round"
+          stroke-dasharray="1.2 7" opacity="0.85" />
+
+  <!-- Destello que recorre el anillo periódicamente -->
+  <circle class="te-shine" cx="50" cy="50" r="41" fill="none"
+          stroke="#fff7e0" stroke-width="2.2" stroke-linecap="round"
+          stroke-dasharray="16 242" opacity="0" />
+
+  <!-- Medallón interior -->
+  <circle cx="50" cy="50" r="33" fill="#002B49" fill-opacity="0.55" />
+  <circle cx="50" cy="50" r="33" fill="none" stroke="#c9a227" stroke-width="0.9" opacity="0.55" />
+
+  <!-- Libro abierto estilizado -->
+  <g>
+    <path d="M 50 60 C 44 55.5 37 54.5 30.5 55 L 30.5 41 C 37 40.5 44 41.5 50 46 Z"
+          fill="#F8FAFC" stroke="#c9a227" stroke-width="1" stroke-linejoin="round" />
+    <path d="M 50 60 C 56 55.5 63 54.5 69.5 55 L 69.5 41 C 63 40.5 56 41.5 50 46 Z"
+          fill="#E9EFF6" stroke="#c9a227" stroke-width="1" stroke-linejoin="round" />
+    <path d="M 50 46 L 50 60" stroke="#002B49" stroke-width="1.1" stroke-linecap="round" />
+    <!-- Renglones sugeridos -->
+    <g stroke="#94a3b8" stroke-width="0.8" stroke-linecap="round" opacity="0.7">
+      <path d="M 35 46.5 C 39.5 46.8 43.5 47.8 46.5 49.4" />
+      <path d="M 35 51 C 39.5 51.3 43.5 52.3 46.5 53.9" />
+      <path d="M 65 46.5 C 60.5 46.8 56.5 47.8 53.5 49.4" />
+      <path d="M 65 51 C 60.5 51.3 56.5 52.3 53.5 53.9" />
+    </g>
+  </g>
+
+  <!-- Marca de verificación dorada: se dibuja al cargar -->
+  <path class="te-check" d="M 38.5 50.5 L 46.5 58.5 L 63 40"
+        fill="none" stroke="url(#teGold)" stroke-width="4.6"
+        stroke-linecap="round" stroke-linejoin="round" />
+</svg>
