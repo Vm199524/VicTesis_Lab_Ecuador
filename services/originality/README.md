@@ -31,7 +31,7 @@ Es un servicio independiente (Express + SQLite + modelos ONNX) que el portal con
 
 ## 🧱 Stack
 
-- **Servidor:** Node.js 20 · Express · SQLite (corpus y reportes).
+- **Servidor:** Node.js 22.5+ · Express · SQLite nativo (`node:sqlite`, corpus y reportes).
 - **IA / NLP:** `@huggingface/transformers` (ONNX): modelo semántico multilingüe para similitud y modelo `Qwen2.5` (0.5B) para la estimación de contenido IA.
 - **Extracción:** `pdfjs-dist` (PDF), `mammoth` / `word-extractor` (Word), `multer` (subida).
 - **Informes PDF:** render HTML a PDF con **Puppeteer** (Chromium headless).
