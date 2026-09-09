@@ -66,7 +66,7 @@ const UI_TRANSLATIONS: Record<string, Dict> = {
   // El nombre del portal se traduce igual que el resto de la interfaz: es
   // un título descriptivo de un portal académico, no una marca comercial
   // registrada, así que cambia de idioma junto con todo lo demás.
-  'brand.name': { es: 'Tesis Ecuador', en: 'Thesis Ecuador', pt: 'Tese Ecuador', fr: 'Thèse Ecuador', it: 'Tesi Ecuador' },
+  'brand.name': { es: 'VicTesis Lab', en: 'VicTesis Lab', pt: 'VicTesis Lab', fr: 'VicTesis Lab', it: 'VicTesis Lab' },
 
   // ---------- Pie de página ----------
   'footer.tagline': { es: 'Portal Universitario', en: 'University Portal', pt: 'Portal Universitário', fr: 'Portail Universitaire', it: 'Portale Universitario' },
@@ -145,7 +145,7 @@ const UI_TRANSLATIONS: Record<string, Dict> = {
   'support.button': { es: 'Escríbeme', en: 'Message me', pt: 'Fale comigo', fr: 'Écris-moi', it: 'Scrivimi' },
 
   // ---------- Footer ----------
-  'footer.title': { es: 'Tesis Ecuador · Portal Universitario', en: 'Tesis Ecuador · University Portal', pt: 'Tesis Ecuador · Portal Universitário', fr: 'Tesis Ecuador · Portail Universitaire', it: 'Tesis Ecuador · Portale Universitario' },
+  'footer.title': { es: 'VicTesis Lab · Portal Universitario', en: 'VicTesis Lab · University Portal', pt: 'VicTesis Lab · Portal Universitário', fr: 'VicTesis Lab · Portail Universitaire', it: 'VicTesis Lab · Portale Universitario' },
   'footer.description': { es: 'Plataforma metodológica independiente para acompañar a los estudiantes universitarios de todo el Ecuador en la formulación de sus proyectos de grado.', en: 'An independent methodology platform supporting university students across Ecuador as they shape their graduation projects.', pt: 'Plataforma metodológica independente para acompanhar os estudantes universitários de todo o Equador na formulação de seus projetos de graduação.', fr: 'Plateforme méthodologique indépendante pour accompagner les étudiants universitaires de tout l\'Équateur dans la formulation de leurs projets de fin d\'études.', it: 'Piattaforma metodologica indipendente per accompagnare gli studenti universitari di tutto l\'Ecuador nella formulazione dei loro progetti di laurea.' },
   'footer.tags': { es: 'Estructuración de Avances • Ecuaciones Scopus • Normas APA 7ª Edición • Zotero • Suite de Herramientas', en: 'Draft Structuring • Scopus Search Strings • APA 7th Edition • Zotero • Toolset', pt: 'Estruturação de Avanços • Equações Scopus • Normas APA 7ª Edição • Zotero • Suíte de Ferramentas', fr: 'Structuration des Avancées • Équations Scopus • Normes APA 7e Édition • Zotero • Suite d\'Outils', it: 'Strutturazione degli Avanzamenti • Equazioni Scopus • Norme APA 7ª Edizione • Zotero • Suite di Strumenti' },
 

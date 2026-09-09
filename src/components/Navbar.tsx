@@ -82,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               style={{ fontFamily: "'Playfair Display', Georgia, serif", letterSpacing: '-0.005em' }}
             >
               <span className="bg-gradient-to-r from-white via-[#f6d97a] to-[#c9a227] bg-clip-text text-transparent group-hover:from-white group-hover:via-white group-hover:to-[#f0cf62]">
-                Ecu Tesis
+                VicTesis Lab
               </span>
             </span>
             <span className="mt-1 flex items-center gap-1.5 truncate">
