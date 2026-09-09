@@ -155,6 +155,7 @@ La app queda en **http://127.0.0.1:3000**.
 | `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET` | No | Inicio de sesión social (OAuth). |
 | `VITE_ADSENSE_CLIENT`, `VITE_ADSENSE_SLOT_HOME` | No | Google AdSense (sin ellas no se carga publicidad). |
 | `ORIGINALITY_API_URL` | No | URL del servicio de verificación de originalidad. |
+| `VITE_ORIGINALITY_API_URL` | Solo build prod. | URL pública del Cloud Run del portal para el módulo de originalidad (ver nota en ☁️ Despliegue). |
 
 ### Scripts
 
@@ -193,6 +194,15 @@ CMD ["node", "dist/server.cjs"]
 **Firebase Hosting + Cloud Run** — Hosting publica `dist/` como sitio estático y **reenvía `/api/**` a la API Express que corre en Cloud Run** (misma imagen de arriba). Así el portal queda en `https://…web.app` y la API en el mismo origen.
 
 El **servicio de originalidad** se despliega aparte como su propio servicio Cloud Run (tiene su `Dockerfile` en `services/originality`) y el portal lo alcanza con `ORIGINALITY_API_URL`.
+
+> **⚠️ Límite de 60 s del hosting y análisis largos.** Firebase Hosting corta sus
+> *rewrites* a Cloud Run a los **60 s** (no configurable), y un análisis de una tesis
+> completa dura varios minutos: por el hosting, el navegador recibe un 502/504 de la
+> pasarela aunque el detector haya terminado. Por eso el build de producción define
+> `VITE_ORIGINALITY_API_URL` con la URL pública del Cloud Run del portal (timeout
+> 900 s): el módulo de plagio habla **directo** con ese Cloud Run —CORS habilitado
+> para `*.web.app`/`*.firebaseapp.com` y localhost— y se salta el tope del hosting.
+> En desarrollo (sin esa variable) se usa el mismo origen y todo sigue como antes.
 
 ---
 

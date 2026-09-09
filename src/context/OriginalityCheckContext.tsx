@@ -21,6 +21,28 @@ export const UPLOAD = {
   accept: '.pdf,.docx,.doc,.rtf,.txt,.md',
 };
 
+/* ------------------------------------------------------------------ *
+ * Base del servicio de verificación
+ * ------------------------------------------------------------------ */
+
+/**
+ * URL del Cloud Run del portal para el módulo de originalidad.
+ *
+ * Firebase Hosting corta sus rewrites a Cloud Run a los 60 s, y un análisis de
+ * una tesis completa dura varios minutos: por el hosting el navegador jamás
+ * recibe la respuesta de un análisis largo (la pasarela devuelve 502/504 y el
+ * estudiante ve un error pese a que el detector terminó). Por eso, cuando se
+ * despliega con `VITE_ORIGINALITY_API_URL` apuntando a la URL pública del
+ * Cloud Run del portal (timeout 900 s), el cliente habla con ella de forma
+ * directa y se salta el tope del hosting. Vacía => mismo origen (desarrollo,
+ * donde el portal reenvía sin límite de 60 s).
+ */
+const ORIGINALITY_API_BASE = (import.meta.env.VITE_ORIGINALITY_API_URL ?? '').replace(/\/+$/, '');
+
+function originalityUrl(path: string): string {
+  return `${ORIGINALITY_API_BASE}/api/originality/${path}`;
+}
+
 export interface SourceHit {
   url: string;
   similarity: number;
@@ -357,7 +379,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
       try {
         const body = new FormData();
         body.append('file', file);
-        const response = await fetch('/api/originality/extract', { method: 'POST', body });
+        const response = await fetch(originalityUrl('extract'), { method: 'POST', body });
         const data = await readCheckerJson(response, t('plag.serviceOffline'));
         if (!response.ok) throw new Error(data.error || t('plag.errorRead'));
 
@@ -455,7 +477,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
     startTicker();
 
     try {
-      const response = await fetch('/api/originality/plagiarism-check', {
+      const response = await fetch(originalityUrl('plagiarism-check'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, excludeCitations }),
@@ -483,7 +505,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
         ? { overlayToken: doc.overlayToken, excludeCitations }
         : { text, excludeCitations };
 
-      const response = await fetch('/api/originality/report', {
+      const response = await fetch(originalityUrl('report'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -512,7 +534,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
 
   /** Estimación de IA en crudo: la comparten el botón de la tarjeta y el del PDF. */
   const runAiDetection = useCallback(async () => {
-    const response = await fetch('/api/originality/ai-detect', {
+    const response = await fetch(originalityUrl('ai-detect'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
@@ -553,7 +575,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
       // lo que haya ahora en el textarea.
       const body = doc?.overlayToken ? { overlayToken: doc.overlayToken } : { text };
 
-      const response = await fetch('/api/originality/ai-report', {
+      const response = await fetch(originalityUrl('ai-report'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -594,7 +616,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
     setIsDownloadingOverlay(true);
     setError(null);
     try {
-      const response = await fetch('/api/originality/report-overlay', {
+      const response = await fetch(originalityUrl('report-overlay'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ overlayToken: doc.overlayToken, excludeCitations }),

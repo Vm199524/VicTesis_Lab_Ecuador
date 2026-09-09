@@ -30,6 +30,54 @@ const ALLOWED = new Set([
 ]);
 
 /**
+ * CORS para que el navegador hable con la URL pública del portal en vez del
+ * mismo origen.
+ *
+ * Firebase Hosting corta sus rewrites a Cloud Run a los 60 s, y un análisis de
+ * una tesis completa dura varios minutos: por el hosting, el navegador jamás
+ * recibe la respuesta de un análisis largo. Para eso el cliente del módulo
+ * llama directamente a la URL del Cloud Run del portal (timeout 900 s), que
+ * queda así entre dominios y necesita CORS. El servicio es de acceso público de
+ * todos modos —sin autenticación—, así que no se filtra nada con habilitarlo.
+ *
+ * Orígenes de confianza: desarrollo local y los dominios de hosting de Firebase
+ * (`.web.app` / `.firebaseapp.com`), más cualquier lista explícita en
+ * `ORIGINALITY_CORS_ORIGINS` (separada por comas) para dominios propios.
+ */
+const CORS_EXTRA_ORIGINS = (process.env.ORIGINALITY_CORS_ORIGINS ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function isTrustedOrigin(origin: string): boolean {
+  if (CORS_EXTRA_ORIGINS.includes(origin)) return true;
+  try {
+    const host = new URL(origin).hostname;
+    return (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host.endsWith('.web.app') ||
+      host.endsWith('.firebaseapp.com')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function corsHeadersFor(req: Request): Record<string, string> {
+  const origin = req.headers.origin;
+  if (!origin || !isTrustedOrigin(origin)) return {};
+  return {
+    'Access-Control-Allow-Origin': origin,
+    Vary: 'Origin',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+/**
  * Un análisis completo consulta ocho proveedores externos y puede tardar varios
  * minutos en documentos largos; el tiempo de espera por defecto de `fetch` lo
  * cortaría a mitad de camino.
@@ -112,6 +160,19 @@ async function forward(req: Request, res: Response, endpoint: string): Promise<v
 }
 
 export function registerOriginalityRoutes(app: Express): void {
+  // Cabeceras CORS + respuesta al preflight OPTIONS para todas las rutas del
+  // módulo (ver nota de CORS arriba). Las cabeceras quedan puestas antes de que
+  // el reenvío escriba el cuerpo, así que también acompañan a sus errores.
+  app.use('/api/originality', (req, res, next) => {
+    const cors = corsHeadersFor(req);
+    for (const [key, value] of Object.entries(cors)) res.setHeader(key, value);
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
+
   app.get('/api/originality/limits', (req, res) => void forward(req, res, 'limits'));
   app.post('/api/originality/extract', (req, res) => void forward(req, res, 'extract'));
   app.post('/api/originality/plagiarism-check', (req, res) =>
