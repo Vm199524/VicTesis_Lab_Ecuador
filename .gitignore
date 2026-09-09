@@ -19,6 +19,9 @@ coverage/
 # Cache de precompilado de Vite (cacheDir en vite.config.ts)
 .vite/
 
+# Cache local del CLI de Firebase (firebase-debug.log, etc.)
+.firebase/
+
 # Configuración y worktrees temporales de Claude Code (los worktrees suman
 # 5,5 GB). Sin esto, el auto-escaneo de contenido de Tailwind v4 los recorre al
 # compilar index.css y el primer request de CSS cuelga el servidor de desarrollo
