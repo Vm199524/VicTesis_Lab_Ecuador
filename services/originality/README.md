@@ -41,7 +41,7 @@ Es un servicio independiente (Express + SQLite + modelos ONNX) que el portal con
 
 ## 🚀 Puesta en marcha
 
-**Requisitos:** Node.js ≥ 20 y npm.
+**Requisitos:** Node.js ≥ 22.5 (usa el módulo nativo `node:sqlite`) y npm.
 
 ```bash
 npm install
@@ -68,7 +68,7 @@ En el primer uso que requiera modelos ONNX, se descargan a la carpeta de caché 
 | `AI_DETECT_DISABLED=1` | No | Desactiva la detección de contenido IA. |
 | `SEMANTIC_MODEL` | No | Modelo semántico (por defecto `Xenova/paraphrase-multilingual-MiniLM-L12-v2`). |
 | `SEMANTIC_DISABLED=1` | No | Desactiva la coincidencia semántica. |
-| `CORPUS_DB` | No | Ruta de la base del corpus local (por defecto `./data/corpus.db`). |
+| `CORPUS_DB` | No | Ruta de la base del corpus local (por defecto `./data/corpus.db`; en Cloud Run el `Dockerfile` la fija a `/tmp/originality/corpus.db` porque la raíz es de solo lectura). |
 | `MAX_CHARS` / `MAX_CHUNKS` | No | Límites de texto y de bloques analizados. |
 | `CORE_API_KEY` / `SEMANTIC_SCHOLAR_API_KEY` | No | Claves opcionales de proveedores para ampliar cobertura. |
 
@@ -83,8 +83,16 @@ gcloud run deploy portaltesis-originalidad \
   --source . \
   --region europe-west1 \
   --allow-unauthenticated --quiet \
-  --memory 1Gi --cpu 1 --concurrency 2 --max-instances 2 --timeout 900
+  --memory 4Gi --cpu 1 --concurrency 1 --max-instances 2 --timeout 900
 ```
+
+> **Memoria:** 4 GiB porque el runtime ONNX de transformers.js reserva varios GB
+> por instancia al cargar el modelo semántico (probado: 1 GiB y 2 GiB revientan
+> con OOM). `concurrency 1` evita que dos análisis solapen sus ~3 GiB en un mismo
+> contenedor. Con `min-instances 0` no hay coste en reposo.
+> La primera petición tras un arranque en frío descarga el modelo a
+> `TRANSFORMERS_CACHE` (~40–60 s); las siguientes son instantáneas mientras la
+> instancia vive.
 
 > El portal **Tesis Ecuador (VicTesis Lab)** se conecta a este servicio con la variable
 > `ORIGINALITY_API_URL` y solo expone sus rutas `/api/*` bajo `/api/originality/*`. Cuando

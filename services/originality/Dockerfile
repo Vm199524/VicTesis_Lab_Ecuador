@@ -6,8 +6,12 @@
 #
 # Base debian (glibc) porque Puppeteer descarga Chrome for Testing y necesita esas
 # librerías: la base alpine/musl de la plantilla original no puede ejecutarlo.
+#
+# Node 24 (bookworm): el servidor importa `node:sqlite` (server/corpus.js), módulo
+# que no existe en Node 20 y que en Node 22 aún requería la bandera experimental.
+# Con Node 24 coincide con el runtime local validado (sin banderas).
 
-FROM node:20-slim
+FROM node:24-bookworm-slim
 
 WORKDIR /app
 
@@ -59,10 +63,13 @@ COPY . .
 RUN npm run build
 
 # El sistema de archivos de Cloud Run es de solo lectura salvo /tmp: los modelos
-# ONNX (IA/IA-semántica) se cachean ahí si no vienen ya en la imagen.
+# ONNX (IA/IA-semántica) se cachean ahí si no vienen ya en la imagen, y el corpus
+# local (server/corpus.js) también crea su base de datos en /tmp para poder
+# escribir (en local sin CORPUS_DB cae a ./data/corpus.db).
 ENV NODE_ENV=production \
     PORT=8080 \
-    TRANSFORMERS_CACHE=/tmp/hf-transformers
+    TRANSFORMERS_CACHE=/tmp/hf-transformers \
+    CORPUS_DB=/tmp/originality/corpus.db
 
 EXPOSE 8080
 
