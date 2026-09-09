@@ -37,6 +37,29 @@ interface ThesisAiTutorModalProps {
 }
 
 /**
+ * Tema curado (clave KB) → módulo interactivo que mejor encaja.
+ *
+ * Solo se mapean los temas con módulo claro: sirve para que, en conversaciones
+ * largas, el Tutor invite a abrir el módulo (que tiene herramientas) en lugar de
+ * seguir explicando únicamente por chat.
+ */
+const TOPIC_TO_MODULE: Partial<Record<string, EcosystemId>> = {
+  cuantitativo: 'feasibility',
+  objetivos: 'feasibility',
+  variables: 'feasibility',
+  matriz: 'feasibility',
+  ecuacion_booleana: 'scopus',
+  scopus: 'scopus',
+  zotero: 'apa7',
+  apa: 'apa7',
+  redaccion: 'draft',
+  turnitin: 'plagiarism',
+  revision_borrador: 'draft',
+  estructura_documento: 'chapters',
+  videoteca: 'videos',
+};
+
+/**
  * Accesos rápidos del tutor.
  *
  * La etiqueta se traduce, pero `query` viaja siempre en español: la base de
@@ -459,6 +482,10 @@ export const ThesisAiTutorModal: React.FC<ThesisAiTutorModalProps> = ({
   // 'system' = motor determinista). Permite retomar el hilo en las continuaciones.
   const lastIntentRef = useRef<string | null>(null);
 
+  // Último turno en que se invitó a abrir un módulo: la recomendación debe
+  // aparecer espaciada (cada varios mensajes), nunca en cada respuesta.
+  const moduleNudgeRef = useRef(0);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
@@ -492,6 +519,7 @@ export const ThesisAiTutorModal: React.FC<ThesisAiTutorModalProps> = ({
     setMessages([buildWelcomeMessage(tf)]);
     setInputValue('');
     setShowSuggestions(true);
+    moduleNudgeRef.current = 0;
     try {
       window.localStorage.removeItem(HISTORY_KEY);
     } catch {
@@ -541,6 +569,26 @@ export const ThesisAiTutorModal: React.FC<ThesisAiTutorModalProps> = ({
   const withTone = (body: string): string => {
     const opener = toneOpener();
     return opener ? `${opener}\n\n${body}` : body;
+  };
+
+  /**
+   * Invitación localizada a abrir el módulo interactivo del tema, solo cuando la
+   * conversación ya es larga y no se ha recomendado en los últimos turnos.
+   * Devuelve una cadena vacía si no aplica (tema sin módulo claro o muy pronto).
+   */
+  const moduleNudgeFor = (topicKey?: string): string => {
+    if (!topicKey) return '';
+    const moduleId = TOPIC_TO_MODULE[topicKey];
+    if (!moduleId) return '';
+    const userTurns = messages.filter((m) => m.sender === 'user').length + 1;
+    if (userTurns < 6) return '';
+    if (userTurns - moduleNudgeRef.current < 6) return '';
+    const item = ECOSYSTEMS_LIST.find((e) => e.id === moduleId);
+    if (!item) return '';
+    const key = `module.${moduleId}.shortName`;
+    const label = t(key) === key ? item.shortName : t(key);
+    moduleNudgeRef.current = userTurns;
+    return `\n\n${t('tutor.moduleNudge', { module: label })}`;
   };
 
   const handleSendMessage = async (textToSend?: string) => {
@@ -652,7 +700,7 @@ Si quieres que te ayuden con un tema en específico o con el desarrollo de tu pr
           const contMsg: Message = {
             id: `ai-${Date.now()}`,
             sender: 'ai',
-            text: `${header}\n\n${body}`,
+            text: `${header}\n\n${body}${moduleNudgeFor(targetKey)}`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           };
           lastIntentRef.current = nextKey ? `topic:${nextKey}` : `topic:${topicKey}`;
@@ -709,6 +757,7 @@ Si quieres que te ayuden con un tema en específico o con el desarrollo de tu pr
               message: query,
               conversationHistory: messages.slice(-4),
               locale,
+              turns: messages.filter((m) => m.sender === 'user').length + 1,
             }),
           });
 
@@ -745,7 +794,7 @@ Si quieres que te ayuden con un tema en específico o con el desarrollo de tu pr
       const aiResponse: Message = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
-        text: `${withTone(matchedResponse)}${nextCta}`,
+        text: `${withTone(matchedResponse)}${nextCta}${moduleNudgeFor(matchedKey)}`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, aiResponse]);

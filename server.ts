@@ -46,6 +46,7 @@ Tu objetivo es explicar conceptos metodológicos con rigor científico, pedagog�
 Cada universidad tiene su propio formato de titulación: da orientación general y recuerda al estudiante que debe contrastarla con el reglamento y el formato vigentes de su institución. No inventes normativas ni plazos de universidades concretas.
 Responde únicamente sobre metodología, titulación y el contenido real de VicTesis Lab (el portal Tesis Ecuador). Si la consulta es ajena a ese ámbito (temas personales, actualidad, otros oficios, etc.), indícalo con amabilidad y redirige a un tema del sistema; no improvises módulos que no existan.
 Regla de marca: cada vez que te refieras a este sistema, portal o aplicación, nómbralo "VicTesis Lab". En la primera mención de una respuesta puedes aclarar entre paréntesis que es el portal universitario Tesis Ecuador. No uses solos términos genéricos como "el sistema", "la plataforma" o "este portal", y no lo llames únicamente "Tesis Ecuador" ni "Ecu Tesis".
+Experto en TÍTULOS de tesis: cuando te pidan construir, mejorar o evaluar el título de una investigación, nunca propongas títulos genéricos ni pobres. Aplica a cualquier carrera o especialidad (trabajo social, ingeniería, arquitectura, educación, salud, derecho, etc.). Procede así: 1) si falta información, haz antes 1-3 preguntas breves para delimitar carrera/programa, el problema o tema concreto, la(s) variable(s) u objeto de estudio, la población o unidad de análisis y el contexto (lugar y año o periodo); 2) con los datos, propón 2-3 opciones con enfoques distintos, cada una paramétrica, concisa (idealmente 15-25 palabras) y gramaticalmente correcta, que combine tipo de estudio/estrategia o propuesta + objeto o variables + delimitación (población/ámbito) + contexto geográfico-temporal, con la terminología propia de la disciplina del estudiante; 3) tras proponerlas, explica en 1-2 frases por qué cada opción está bien estructurada y cuál recomiendas.
 Estilo: responde en lenguaje natural y conversacional, como un tutor real que dialoga con el estudiante. Evita plantillas, enumeraciones rígidas, títulos repetidos y el tono de manual. Adapta la extensión a la pregunta concreta y, cuando des pasos o conceptos, explícalos en frases fluidas con ejemplos cercanos. Si algo no se entiende o falta contexto, pregunta con naturalidad.`;
 
 // ------------------------------------------------------------------------ LLM
@@ -78,7 +79,15 @@ async function askLlm(
   message: string,
   conversationHistory: unknown,
   locale: unknown,
+  turns = 0,
 ): Promise<string | null> {
+  // Conversación extensa: se invita (con mesura) a seguir en el módulo interactivo
+  // que encaja con la consulta, en lugar de explicar todo únicamente por chat.
+  const longChatHint =
+    typeof turns === 'number' && turns >= 6
+      ? `\nConversación extensa: el estudiante lleva ya ${turns} mensajes consultándote. Si su consulta actual encaja con uno de los módulos interactivos de VicTesis Lab, al final de tu respuesta recomiéndale en una sola línea (tono natural) abrir ese módulo desde el menú "Módulos", porque ahí encontrará herramientas interactivas para avanzar más rápido. No repitas la recomendación en cada respuesta.`
+      : '';
+
   const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   if (Array.isArray(conversationHistory)) {
     for (const m of conversationHistory) {
@@ -93,7 +102,7 @@ async function askLlm(
     try {
       const system = `${SYSTEM_INSTRUCTION}
 # Conocimiento del sistema VicTesis Lab (portal Tesis Ecuador)
-${PLATFORM_MODULES_SUMMARY}${localeInstruction(locale)}`;
+${PLATFORM_MODULES_SUMMARY}${longChatHint}${localeInstruction(locale)}`;
       const messages = [{ role: 'system', content: system }] as Array<{
         role: string;
         content: string;
@@ -137,7 +146,7 @@ ${PLATFORM_MODULES_SUMMARY}${localeInstruction(locale)}`;
       const context =
         history.map((h) => `${h.role === 'user' ? 'Tesista' : 'Tutor IA'}: ${h.content}`).join('\n') + '\n\n';
       const prompt = `${history.length ? `Historial previo:\n${context}` : ''}Pregunta del tesista: ${message}`;
-      const systemInstruction = `${SYSTEM_INSTRUCTION}${localeInstruction(locale)}`;
+      const systemInstruction = `${SYSTEM_INSTRUCTION}${longChatHint}${localeInstruction(locale)}`;
       const response = await ai.models.generateContent({
         model: 'gemini-flash-latest',
         contents: prompt,
@@ -476,7 +485,7 @@ He registrado tu consulta. Para orientarte con precisión académica, puedes pre
 // API endpoint to answer student questions
 app.post('/api/ask-tutor', async (req, res) => {
   try {
-    const { message, conversationHistory, locale } = req.body;
+    const { message, conversationHistory, locale, turns } = req.body;
 
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Mensaje requerido' });
@@ -528,7 +537,7 @@ app.post('/api/ask-tutor', async (req, res) => {
     }
 
     // Respuesta con un modelo real (Together/Llama o Gemini) en lenguaje natural.
-    const llmReply = await askLlm(message, conversationHistory, locale);
+    const llmReply = await askLlm(message, conversationHistory, locale, turns);
     if (llmReply) {
       res.json({ reply: llmReply });
       return;
