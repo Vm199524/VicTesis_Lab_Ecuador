@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "site": "portaltesisvm",
+    "site": "portaltesis",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -22,6 +22,15 @@
         "headers": [
           { "key": "Cache-Control", "value": "no-cache" }
         ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "portaltesisvm",
+          "region": "europe-west1"
+        }
       }
     ]
   }

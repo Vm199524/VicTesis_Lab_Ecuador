@@ -39,14 +39,9 @@ export default defineConfig(() => {
     build: {
       rollupOptions: {
         output: {
-          manualChunks: (id) => {
-            if (id.includes('node_modules')) {
-              if (id.includes('@google/genai')) return 'vendor-google';
-              if (id.includes('react-dom')) return 'vendor-react-dom';
-              if (id.includes('react')) return 'vendor-react';
-              if (id.includes('react-router')) return 'vendor-router';
-              return 'vendor-other';
-            }
+          manualChunks: {
+            // React + ReactDOM + Router juntos en un solo chunk (evita createContext undefined)
+            'vendor-react': ['react', 'react-dom'],
           },
         },
       },
