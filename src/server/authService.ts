@@ -157,19 +157,29 @@ export async function initUserStore(): Promise<void> {
     return;
   }
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>(async (resolve) => {
+    // Siembra inicial: lectura directa. El onSnapshot por sí solo no garantiza
+    // entregar los documentos ya existentes a una instancia recién arrancada.
+    try {
+      const snap = await db.collection('users').get();
+      usersCache = snap.docs.map((doc: any) => doc.data() as StoredUser);
+    } catch (err) {
+      console.error('[auth] No se pudo leer Firestore al arrancar:', (err as Error).message);
+    }
+
     db.collection('users').onSnapshot(
       (snapshot: any) => {
         usersCache = snapshot.docs.map((doc: any) => doc.data() as StoredUser);
-        resolve();
       },
       (err: Error) => {
         console.error('[auth] Listener de Firestore caído, usando archivo local:', err.message);
         storeMode = 'file';
         usersCache = readFileUsers();
-        resolve();
       }
     );
+
+    console.log(`[auth] Almacén de usuarios: firestore (${usersCache.length} cargados)`);
+    resolve();
   });
 }
 

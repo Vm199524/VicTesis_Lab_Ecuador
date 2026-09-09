@@ -105,15 +105,22 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
       {/* Main Slide Card (16:9 Presentation Frame) */}
       <div
         id={`slide-card-${currentSlide.id}`}
-        className="surface relative rounded-2xl p-6 sm:p-10 text-slate-800 flex flex-col justify-between overflow-hidden min-h-[520px]"
+        className="surface relative rounded-2xl p-6 sm:p-10 text-slate-800 flex flex-col justify-between overflow-hidden min-h-[520px] ring-1 ring-slate-900/5 shadow-[0_30px_80px_-34px_rgba(0,43,73,0.45)]"
       >
+        {/* Fino filete superior: azul marino a dorado, identidad de la marca. */}
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#002B49] via-[#c9a227] to-transparent" />
+        {/* Marca de agua del número de lámina tras el contenido. */}
+        <div className="absolute -bottom-8 -right-4 text-[7rem] font-black leading-none text-slate-900/[0.03] select-none pointer-events-none">
+          {String(currentIndex + 1).padStart(2, '0')}
+        </div>
+
         {/* Slide Header */}
         <div className="relative z-10 mb-6">
           <h2 className="text-2xl sm:text-4xl font-light text-slate-900 tracking-tight leading-tight">
             {slideTitle.includes(':') ? (
               <>
                 {slideTitle.split(':')[0]}:{' '}
-                <span className="font-bold text-blue-600">
+                <span className="font-bold bg-gradient-to-r from-[#0a4d7a] to-[#00447a] bg-clip-text text-transparent">
                   {slideTitle.split(':')[1]}
                 </span>
               </>

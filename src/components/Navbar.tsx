@@ -77,11 +77,19 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <TesisEcuadorLogo size="sm" />
           <span className="text-left min-w-0 hidden xs:block">
-            <span className="block text-[15px] font-black text-white tracking-tight leading-none group-hover:text-[#f0cf62] transition-colors truncate">
-              {t('brand.name')}
+            <span
+              className="block text-[17px] leading-none truncate transition-colors"
+              style={{ fontFamily: "'Playfair Display', Georgia, serif", letterSpacing: '-0.005em' }}
+            >
+              <span className="bg-gradient-to-r from-white via-[#f6d97a] to-[#c9a227] bg-clip-text text-transparent group-hover:from-white group-hover:via-white group-hover:to-[#f0cf62]">
+                Portal Tesis
+              </span>
             </span>
-            <span className="block text-[11px] text-blue-200/80 font-medium leading-tight mt-0.5 truncate">
-              {t('footer.tagline')}
+            <span className="mt-1 flex items-center gap-1.5 truncate">
+              <span className="w-5 h-px bg-gradient-to-r from-[#c9a227] to-transparent shrink-0" />
+              <span className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-blue-100/80">
+                Ecuador · De la idea al título
+              </span>
             </span>
           </span>
         </button>

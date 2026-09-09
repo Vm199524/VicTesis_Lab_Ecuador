@@ -110,9 +110,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             </h2>
             <p className="text-[13px] text-slate-500">{t('home.modulesSubtitle')}</p>
           </div>
-          <span className="text-[11px] font-bold text-slate-400 tabular-nums shrink-0">
-            {ECOSYSTEMS_LIST.length}
-          </span>
         </div>
 
         {/* Retícula uniforme: los nueve módulos ocupan tres filas exactas, sin
