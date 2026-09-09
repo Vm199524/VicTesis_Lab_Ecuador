@@ -88,7 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="mt-1 flex items-center gap-1.5 truncate">
               <span className="w-5 h-px bg-gradient-to-r from-[#c9a227] to-transparent shrink-0" />
               <span className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-blue-100/80">
-                De la idea al proyecto
+                De la idea a la victoria
               </span>
             </span>
           </span>
