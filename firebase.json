@@ -28,7 +28,7 @@
       {
         "source": "/api/**",
         "run": {
-          "serviceId": "portal-tesis-ecuador-git",
+          "serviceId": "portaltesisvm",
           "region": "europe-west1"
         }
       }
