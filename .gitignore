@@ -27,3 +27,6 @@ coverage/
 # compilar index.css y el primer request de CSS cuelga el servidor de desarrollo
 # por minutos; además nada de esto debe publicarse en el repositorio remoto.
 .claude/
+
+# YAML de fix puntual con secretos (no subir)
+svc-fix.yaml
