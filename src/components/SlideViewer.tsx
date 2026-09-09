@@ -75,8 +75,8 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
   return (
     <div
       ref={slideContainerRef}
-      className={`w-full max-w-6xl mx-auto flex flex-col justify-between transition-all ${
-        isFullscreen ? 'h-screen bg-[#05070d] p-6 overflow-y-auto' : 'py-6 px-4'
+      className={`w-full max-w-6xl mx-auto flex flex-col transition-all ${
+        isFullscreen ? 'h-screen bg-[#05070d] p-4 sm:p-6 gap-3' : 'py-6 px-4'
       }`}
     >
       {/* Slide Top Bar */}
@@ -105,7 +105,9 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
       {/* Main Slide Card (16:9 Presentation Frame) */}
       <div
         id={`slide-card-${currentSlide.id}`}
-        className="surface relative rounded-2xl p-6 sm:p-10 text-slate-800 flex flex-col justify-between overflow-hidden min-h-[520px] ring-1 ring-slate-900/5 shadow-[0_30px_80px_-34px_rgba(0,43,73,0.45)]"
+        className={`surface relative rounded-2xl p-6 sm:p-10 text-slate-800 flex flex-col overflow-hidden ring-1 ring-slate-900/5 shadow-[0_30px_80px_-34px_rgba(0,43,73,0.45)] ${
+          isFullscreen ? 'flex-1 min-h-0' : 'h-[540px] lg:h-[600px]'
+        }`}
       >
         {/* Fino filete superior: azul marino a dorado, identidad de la marca. */}
         <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#002B49] via-[#c9a227] to-transparent" />
@@ -115,7 +117,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
         </div>
 
         {/* Slide Header */}
-        <div className="relative z-10 mb-6">
+        <div className="relative z-10 mb-6 shrink-0">
           <h2 className="text-2xl sm:text-4xl font-light text-slate-900 tracking-tight leading-tight">
             {slideTitle.includes(':') ? (
               <>
@@ -136,8 +138,12 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
           </p>
         </div>
 
-        {/* Golden Rule Callout */}
-        <div className="relative z-10 mb-6 bg-amber-50/70 border-l-4 border-amber-500 p-4 rounded-r-xl">
+        {/* Contenido variable: hace scroll dentro sin cambiar el alto del marco, de
+            modo que todas las láminas se ven del mismo tamaño y el pie con los
+            botones azules nunca queda oculto. */}
+        <div className="relative z-10 flex-1 min-h-0 overflow-y-auto thin-scrollbar">
+          {/* Golden Rule Callout */}
+          <div className="bg-amber-50/70 border-l-4 border-amber-500 p-4 rounded-r-xl mb-5">
           <div className="flex items-start gap-3">
             <Lightbulb className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
@@ -171,11 +177,12 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                 {tf(`slide.${currentSlide.id}.bullet.${idx}.description`, bp.description)}
               </p>
             </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* Footer info & interactive tool action */}
-        <div className="relative z-10 pt-5 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="relative z-10 shrink-0 mt-2 pt-5 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start gap-2 max-w-2xl">
             <span className="text-xs font-bold text-slate-400 shrink-0 uppercase tracking-wide">
               {t('slides.proTipLabel')}
