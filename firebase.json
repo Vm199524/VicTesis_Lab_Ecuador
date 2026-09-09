@@ -23,6 +23,15 @@
           { "key": "Cache-Control", "value": "no-cache" }
         ]
       }
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "tesis-portal-api",
+          "region": "us-central1"
+        }
+      }
     ]
   }
 }

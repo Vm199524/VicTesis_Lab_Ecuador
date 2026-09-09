@@ -4,10 +4,11 @@
  * IMPORTANTE: este módulo lo importa ÚNICAMENTE `server.ts`. Nunca debe llegar al
  * bundle del navegador: contiene hashes, secretos de sesión y credenciales OAuth.
  *
- * Sin dependencias nuevas: el hash de contraseña usa `scrypt` de `node:crypto` y la
- * sesión es una cookie firmada con HMAC-SHA256. El almacén es un archivo JSON local,
- * suficiente para el volumen de un portal de titulación y fácil de migrar después a
- * una base de datos real sin tocar los endpoints.
+ * El hash de contraseña usa `scrypt` de `node:crypto` y la sesión es una cookie
+ * firmada con HMAC-SHA256 (stateless). El almacén de cuentas es un archivo JSON
+ * local en desarrollo o Firestore en producción (Cloud Run), intercambiable sin
+ * tocar los endpoints: authService expone funciones síncronas sobre una caché que
+ * Firestore mantiene al día (ver `initUserStore`).
  */
 
 import crypto from 'crypto';
@@ -63,8 +64,27 @@ function sessionSecret(): string {
 }
 
 // ---------------------------------------------------------------- almacenamiento
+//
+// Dos respaldos para las cuentas, elegidos con USER_STORE:
+//  * 'file'      — archivo JSON en .data/users.json (desarrollo local, igual que antes).
+//  * 'firestore' — cada usuario es un documento en la colección `users`. authService
+//                  sigue exponiendo funciones síncronas apoyándose en una caché en
+//                  memoria que Firestore mantiene al día (onSnapshot): varias
+//                  instancias de Cloud Run se ven entre sí sin cambiar los endpoints.
+//
+// Por defecto: file en desarrollo, firestore en producción (NODE_ENV=production).
 
-function readUsers(): StoredUser[] {
+function resolveStoreMode(): 'file' | 'firestore' {
+  if (process.env.USER_STORE === 'file') return 'file';
+  if (process.env.USER_STORE === 'firestore') return 'firestore';
+  return process.env.NODE_ENV === 'production' ? 'firestore' : 'file';
+}
+
+let storeMode: 'file' | 'firestore' = resolveStoreMode();
+let db: any = null;
+let usersCache: StoredUser[] = [];
+
+function readFileUsers(): StoredUser[] {
   try {
     return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8')) as StoredUser[];
   } catch {
@@ -72,9 +92,85 @@ function readUsers(): StoredUser[] {
   }
 }
 
-function writeUsers(users: StoredUser[]): void {
+function writeFileUsers(users: StoredUser[]): void {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+}
+
+function readUsers(): StoredUser[] {
+  return storeMode === 'firestore' ? usersCache : readFileUsers();
+}
+
+/** Firestore rechaza `undefined`; los campos opcionales se omiten al guardar. */
+function sanitizeForStore(user: StoredUser): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(user) as (keyof StoredUser)[]) {
+    const value = user[key];
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Persiste la lista de cuentas. En modo archivo reescribe users.json (comportamiento
+ * histórico). En modo Firestore escribe un documento por usuario (set) sin borrar:
+ * así dos instancias que registran cuentas distintas no se pisan entre sí.
+ */
+function writeUsers(users: StoredUser[]): void {
+  if (storeMode !== 'firestore') {
+    writeFileUsers(users);
+    return;
+  }
+  usersCache = users.slice();
+  if (!db) return; // aun sin conectar: la caché ya quedo al dia.
+  const col = db.collection('users');
+  const batch = db.batch();
+  for (const user of users) {
+    batch.set(col.doc(user.id), sanitizeForStore(user));
+  }
+  batch.commit().catch((err: Error) => {
+    console.error('[auth] Fallo al guardar usuarios en Firestore:', err.message);
+  });
+}
+
+/**
+ * Conecta el almacén antes de atender tráfico. En desarrollo es un no-op (modo
+ * archivo). En producción carga `users` desde Firestore y deja un listener que
+ * mantiene `usersCache` sincronizada entre instancias. Si Firestore no está
+ * disponible (p. ej. sin credenciales o sin base creada) cae a archivo local y el
+ * servidor arranca igual, registrando el motivo.
+ */
+export async function initUserStore(): Promise<void> {
+  if (storeMode !== 'firestore') return;
+
+  try {
+    const { initializeApp, applicationDefault, getApps } = await import('firebase-admin');
+    const { getFirestore } = await import('firebase-admin/firestore');
+    if (getApps().length === 0) {
+      initializeApp({ credential: applicationDefault() });
+    }
+    db = getFirestore(getApps()[0]);
+  } catch (err) {
+    console.error('[auth] Firestore no disponible, usando archivo local:', (err as Error).message);
+    storeMode = 'file';
+    usersCache = readFileUsers();
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    db.collection('users').onSnapshot(
+      (snapshot: any) => {
+        usersCache = snapshot.docs.map((doc: any) => doc.data() as StoredUser);
+        resolve();
+      },
+      (err: Error) => {
+        console.error('[auth] Listener de Firestore caído, usando archivo local:', err.message);
+        storeMode = 'file';
+        usersCache = readFileUsers();
+        resolve();
+      }
+    );
+  });
 }
 
 export function toPublicUser(user: StoredUser): PublicUser {

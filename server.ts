@@ -4,6 +4,7 @@ import type { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { DRAFT_GUIDANCE, getPublicGuidance } from './src/domain/draftGuidanceLibrary';
 import { registerAuthRoutes } from './src/server/authRoutes';
+import { initUserStore } from './src/server/authService';
 import { registerOriginalityRoutes } from './src/server/originalityProxy';
 import { startOriginalityService, stopOriginalityService } from './src/server/originalityService';
 import { translateContent, translate, LOCALES, DEFAULT_LOCALE, type Locale } from './src/i18n/translations';
@@ -528,6 +529,10 @@ registerOriginalityRoutes(app);
 
 // Vite middleware for development or static serving for production
 async function startServer() {
+  // Carga el almacén de cuentas antes de atender tráfico: en producción conecta
+  // Firestore y deja la caché de usuarios lista (ver authService.initUserStore).
+  await initUserStore();
+
   if (process.env.NODE_ENV !== 'production') {
     console.time('[perf] Inicializar Vite');
     const { createServer: createViteServer } = await import('vite');
