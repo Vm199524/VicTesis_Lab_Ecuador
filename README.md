@@ -11,11 +11,11 @@
 
 <img src="docs/logo-tesis-ecuador.svg" width="132" height="132" alt="Logo Tesis Ecuador" />
 
-# Portal Tesis Ecuador
+# VicTesis Lab — Portal Tesis Ecuador
 
 **Plataforma web interactiva de apoyo metodológico para estudiantes universitarios de todo el Ecuador en proceso de titulación.**
 
-*Recursos, tutoría y formación académica* — de la **viabilidad del tema** a la **defensa**: metodología cuantitativa, matriz de consistencia, ecuaciones Scopus, normas APA 7, verificación de originalidad y un **Tutor IA** que entiende lenguaje natural.
+*De la idea a la victoria* — de la **viabilidad del tema** a la **defensa**: metodología cuantitativa, matriz de consistencia, ecuaciones Scopus, normas APA 7, verificación de originalidad y un **Tutor IA con IA real** que entiende lenguaje natural y conoce el sistema completo.
 
 [![React 19](https://img.shields.io/badge/React-19-%23002B49?logo=react&logoColor=white&labelColor=%23002B49)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-%23002B49?logo=typescript&logoColor=white&labelColor=%23002B49)](https://www.typescriptlang.org)
@@ -47,18 +47,30 @@ Suma un **Tutor IA** y un **servicio de verificación de originalidad** (detecci
 
 ---
 
-## 🤖 Tutor IA: un mini-agente inteligente (offline primero)
+## 🤖 Tutor IA: un mini-agente con IA real
 
-El Tutor IA **no depende de una API para responder lo esencial**. Su motor de intención
-(`src/domain/tutorIntentEngine.ts`) clasifica cada mensaje por capas:
+El Tutor IA combina un **motor determinista offline** (siempre disponible, sin red) con un
+**LLM real** que responde en lenguaje natural sobre metodología y sobre **todos los módulos
+del sistema**:
 
-1. **Cortesías** — saludos, agradecimientos y despedidas (`matchMetaKey`), respondidos al instante.
-2. **Temas curados** — 20+ temas de metodología (`matchTopicKey`, sinónimos + normalización sin tildes) resueltos desde una base de conocimiento **localizada a `es · en · pt · fr · it`**.
-3. **Flujo guiado** — máquina de estados (`TOPIC_NEXT`) que **avanza de tema en tema** cuando respondes *"sí, sigamos"*: cuantitativo → objetivos → variables → matriz → ecuaciones Scopus → Zotero → APA 7 → redacción → originalidad → revisión → estructura → defensa.
-4. **Lenguaje natural** — una *pregunta* real ("¿hasta dónde vamos a avanzar?") **nunca** se confunde con una orden de continuar: solo las afirmaciones explícitas avanzan el flujo.
-5. **Texto libre** — si la consulta no coincide con la KB, se delega al servidor Express (`/api/ask-tutor`), que con `GEMINI_API_KEY` responde en el **idioma activo** del chat.
+1. **Cortesías y flujo guiado** — saludos, agradecimientos y el avance paso a paso del plan de titulación
+   (cuantitativo → objetivos → variables → matriz → ecuaciones Scopus → Zotero → APA 7 → redacción →
+   originalidad → revisión → estructura → defensa) se resuelven al instante por el motor de intención
+   (`src/domain/tutorIntentEngine.ts`), **sin llamar a ninguna API**.
+2. **Temas curados** — 20+ temas de metodología (`matchTopicKey`) desde una base de conocimiento
+   **localizada a `es · en · pt · fr · it`**.
+3. **IA real (mini-agente)** — cuando la consulta es libre, `/api/ask-tutor` compone un **prompt de
+   sistema tipo mini-agente con codificación avanzada**: la persona del tutor (**VicTesis Lab**, el portal
+   Tesis Ecuador), la regla de marca, el historial de la conversación, el **conocimiento íntegro del
+   sistema** (`PLATFORM_MODULES_SUMMARY`, los módulos y qué hace cada uno) y el **idioma activo** del
+   chat. Ese esquema —darle al modelo el mapa completo del sistema antes de responder— es lo que hace
+   que conteste **magistral, en contexto y rápido**, aunque el LLM no haya sido entrenado con esta app.
+4. **Modelo** — primero **Together AI · `meta-llama/Llama-3.3-70B-Instruct-Turbo`** (`TOGETHER_API_KEY`,
+   serverless y económica); si no hay clave, intenta Gemini (`GEMINI_API_KEY`); en último término cae al
+   motor determinista local. El tutor **nunca queda mudo**.
 
-Todo lo curado funciona **sin red ni clave**: si no hay clave Gemini o se agota la cuota, el asistente nunca queda inservible.
+La primera capa (cortesías, temas curados y flujo) funciona **sin red ni clave**; la capa de IA real se
+activa con `TOGETHER_API_KEY`.
 
 ---
 
@@ -74,7 +86,7 @@ El documento del estudiante **se procesa íntegramente en el navegador**: la ext
 
 - **Frontend:** React 19 · TypeScript · Vite 6 · Tailwind CSS v4 (plugin oficial) · Motion · lucide-react.
 - **Backend:** Express 4 + `tsx` en desarrollo; **un solo proceso Node** sirve estáticos y API en producción (`dist/server.cjs`).
-- **IA:** `@google/genai` (Gemini) para texto libre del Tutor IA; detección offline ONNX (transformers.js) en el servicio de originalidad.
+- **IA:** **Together AI · Llama 3.3 70B** para el texto libre del Tutor IA, con respaldo Gemini (`@google/genai`); detección ONNX (transformers.js) en el servicio de originalidad.
 - **i18n:** sistema propio liviano **sin dependencias** (`t()`/`tf()`) con **5 idiomas** — sin i18next, sin peso extra en el bundle.
 - **Marca:** paleta `#002B49` (azul marino) y `#c9a227` (dorado).
 
@@ -135,7 +147,8 @@ La app queda en **http://127.0.0.1:3000**.
 
 | Variable | Requerida | Descripción |
 |---|---|---|
-| `GEMINI_API_KEY` | No | Habilita el texto libre del Tutor IA vía Gemini. Sin ella usa el motor de conocimiento local. |
+| `TOGETHER_API_KEY` | No | Tutor IA con IA real: Llama 3.3 70B (Together AI). Es la vía prioritaria para el texto libre. |
+| `GEMINI_API_KEY` | No | Respaldo del Tutor IA si no hay clave Together (Gemini). |
 | `PORT` | No | Puerto del servidor. Por defecto `3000`. |
 | `AUTH_SECRET` | Sí (prod.) | Firma de cookies de sesión. |
 | `ADMIN_KEY` | No | Clave del panel de guía de corrección (`/#admin`). |
@@ -187,7 +200,7 @@ El **servicio de originalidad** se despliega aparte (tiene su propio `Dockerfile
 
 <div align="center">
 
-**Portal Tesis Ecuador** · recursos, tutoría y formación académica para la titulación.
+**VicTesis Lab · Portal Tesis Ecuador** — *de la idea a la victoria*: recursos, tutoría y formación académica para la titulación.
 
 <sub>Proyecto académico · **Victor Manuel LLuilema Pisco** · Universidad Estatal de Milagro (UNEMI)</sub>
 
