@@ -76,7 +76,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           title={t('nav.home')}
         >
           <TesisEcuadorLogo size="sm" />
-          <span className="text-left min-w-0 hidden xs:block">
+          <span className="text-left min-w-0 block">
             <span
               className="block text-[17px] leading-none truncate transition-colors"
               style={{ fontFamily: "'Playfair Display', Georgia, serif", letterSpacing: '-0.005em' }}
