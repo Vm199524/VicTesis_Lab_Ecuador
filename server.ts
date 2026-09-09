@@ -47,6 +47,110 @@ Cada universidad tiene su propio formato de titulación: da orientación general
 Responde únicamente sobre metodología, titulación y el contenido real de la plataforma Tesis Ecuador. Si la consulta es ajena a ese ámbito (temas personales, actualidad, otros oficios, etc.), indícalo con amabilidad y redirige a un tema de la plataforma; no improvises módulos que no existan.
 Estilo: responde en lenguaje natural y conversacional, como un tutor real que dialoga con el estudiante. Evita plantillas, enumeraciones rígidas, títulos repetidos y el tono de manual. Adapta la extensión a la pregunta concreta y, cuando des pasos o conceptos, explícalos en frases fluidas con ejemplos cercanos. Si algo no se entiende o falta contexto, pregunta con naturalidad.`;
 
+// ------------------------------------------------------------------------ LLM
+// El Tutor usa un modelo real en lenguaje natural cuando hay una clave. Prioridad:
+// Together (Llama, barato y serverless) y, si no, Gemini. Sin ninguna clave cae
+// siempre al motor determinista local.
+
+const TOGETHER_MODEL =
+  process.env.TOGETHER_MODEL || 'meta-llama/Llama-3.3-70B-Instruct-Turbo';
+
+const LOCALE_NAMES: Record<string, string> = {
+  es: 'español',
+  en: 'English',
+  pt: 'Portuguese',
+  fr: 'French',
+  it: 'Italian',
+};
+
+function localeInstruction(locale: unknown): string {
+  if (!locale || locale === 'es') return '';
+  const name = LOCALE_NAMES[String(locale)] ?? String(locale);
+  return `\nIMPORTANTE — Idioma: redacta toda la respuesta en ${name} (código ${locale}).`;
+}
+
+/**
+ * Intenta responder la pregunta con un LLM. Devuelve `null` si no hay modelo
+ * configurado o si el modelo falla (así el llamador usa el motor local).
+ */
+async function askLlm(
+  message: string,
+  conversationHistory: unknown,
+  locale: unknown,
+): Promise<string | null> {
+  const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  if (Array.isArray(conversationHistory)) {
+    for (const m of conversationHistory) {
+      if (!m || typeof m.text !== 'string' || !m.text.trim()) continue;
+      history.push({ role: m.sender === 'ai' ? 'assistant' : 'user', content: m.text });
+    }
+  }
+
+  // 1) Together AI (Llama): económico, con el conocimiento del sistema en contexto.
+  const togetherKey = process.env.TOGETHER_API_KEY;
+  if (togetherKey) {
+    try {
+      const system = `${SYSTEM_INSTRUCTION}
+# Conocimiento del sistema VicTesis Lab (portal Tesis Ecuador)
+${PLATFORM_MODULES_SUMMARY}${localeInstruction(locale)}`;
+      const messages = [{ role: 'system', content: system }] as Array<{
+        role: string;
+        content: string;
+      }>;
+      for (const h of history) messages.push(h);
+      messages.push({ role: 'user', content: message });
+
+      const response = await fetch('https://api.together.xyz/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${togetherKey}`,
+        },
+        body: JSON.stringify({
+          model: TOGETHER_MODEL,
+          messages,
+          temperature: 0.7,
+          max_tokens: 900,
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        console.warn('[tutor][together] error', response.status, text.slice(0, 300));
+      } else {
+        const data = (await response.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        const content = data.choices?.[0]?.message?.content?.trim();
+        if (content) return content;
+      }
+    } catch (error: any) {
+      console.warn('[tutor][together] fallo, probando Gemini:', error?.message || error);
+    }
+  }
+
+  // 2) Gemini (respaldo; requiere clave sin restricciones).
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    try {
+      const ai = await getAiClient();
+      const context =
+        history.map((h) => `${h.role === 'user' ? 'Tesista' : 'Tutor IA'}: ${h.content}`).join('\n') + '\n\n';
+      const prompt = `${history.length ? `Historial previo:\n${context}` : ''}Pregunta del tesista: ${message}`;
+      const systemInstruction = `${SYSTEM_INSTRUCTION}${localeInstruction(locale)}`;
+      const response = await ai.models.generateContent({
+        model: 'gemini-flash-latest',
+        contents: prompt,
+        config: { systemInstruction, temperature: 0.7 },
+      });
+      if (response.text && response.text.trim().length > 0) return response.text.trim();
+    } catch (geminiError: any) {
+      console.warn('[tutor][gemini] error:', geminiError?.message || geminiError);
+    }
+  }
+
+  return null;
+}
+
 // Comprehensive expert knowledge database for the platform
 function getDomainResponse(query: string): string {
   const q = query.toLowerCase();
@@ -378,13 +482,13 @@ app.post('/api/ask-tutor', async (req, res) => {
       return;
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const llmEnabled = Boolean(process.env.TOGETHER_API_KEY || process.env.GEMINI_API_KEY);
 
     // Motor determinista del sistema (gratis y preciso): responde al instante
     // sobre hitos (Avance 1/2/3) y panorama de la plataforma. Solo se usa cuando
     // NO hay un modelo conectado; con LLM esas preguntas también se responden en
     // lenguaje natural y este motor queda únicamente como respaldo.
-    if (!apiKey) {
+    if (!llmEnabled) {
       const platformReply = platformKnowledgeIntent(message);
       if (platformReply) {
         res.json({ reply: platformReply });
@@ -422,51 +526,11 @@ app.post('/api/ask-tutor', async (req, res) => {
       return;
     }
 
-    // First attempt Gemini API if key is present
-    if (apiKey) {
-      try {
-        const ai = await getAiClient();
-        let conversationContext = '';
-        if (Array.isArray(conversationHistory) && conversationHistory.length > 0) {
-          conversationContext =
-            'Historial previo:\n' +
-            conversationHistory
-              .map((m: { sender: string; text: string }) => `${m.sender === 'user' ? 'Tesista' : 'Tutor IA'}: ${m.text}`)
-              .join('\n') +
-            '\n\n';
-        }
-
-        // Si el cliente indica su idioma (y no es español), se le pide a Gemini
-        // responder en ese idioma en lugar del español académico por defecto.
-        const LANGUAGE_NAMES: Record<string, string> = {
-          es: 'español',
-          en: 'English',
-          pt: 'Portuguese',
-          fr: 'French',
-          it: 'Italian',
-        };
-        const systemInstruction =
-          locale && locale !== 'es'
-            ? `${SYSTEM_INSTRUCTION}\n\nIMPORTANTE — Idioma de la respuesta: redacta toda la respuesta en ${LANGUAGE_NAMES[locale] ?? locale} (código ${locale}).`
-            : SYSTEM_INSTRUCTION;
-        const prompt = `${conversationContext}Pregunta del tesista: ${message}`;
-        const response = await ai.models.generateContent({
-          model: 'gemini-flash-latest',
-          contents: prompt,
-          config: {
-            systemInstruction,
-            temperature: 0.7,
-          },
-        });
-
-        if (response.text && response.text.trim().length > 0) {
-          res.json({ reply: response.text });
-          return;
-        }
-      } catch (geminiError: any) {
-        // If Gemini API hit quota limit or rate limit, fall through to high-depth domain engine
-        console.warn('Gemini API call returned error, falling back to the local knowledge engine:', geminiError?.message || geminiError);
-      }
+    // Respuesta con un modelo real (Together/Llama o Gemini) en lenguaje natural.
+    const llmReply = await askLlm(message, conversationHistory, locale);
+    if (llmReply) {
+      res.json({ reply: llmReply });
+      return;
     }
 
     // High-depth domain knowledge response fallback
