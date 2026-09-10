@@ -213,51 +213,54 @@ export const TopicFeasibilityCalculator: React.FC = () => {
   return (
     <section id="feasibility-tool" className="py-6 sm:py-8 scroll-mt-20 w-full max-w-full overflow-hidden">
       <div className="surface rounded-3xl overflow-hidden w-full max-w-full">
-        {/* Banner de cabecera con fondo arquitectónico de un CRAI universitario */}
-        <div className="relative p-5 sm:p-8 bg-[#001726] border-b border-amber-400/30 overflow-hidden text-white">
+        {/* Banner de cabecera con fondo arquitectónico de un CRAI universitario.
+            Estilo suave y claro: degradado azul #10324D→#0B2438 (menos negro),
+            ámbar reducido a acento mínimo y píldoras redondeadas con área táctil
+            mayor para los controles. */}
+        <div className="relative p-5 sm:p-8 bg-[#0d2b46] border-b border-white/10 overflow-hidden text-white">
           <div
-            className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity scale-105 pointer-events-none"
+            className="absolute inset-0 bg-cover bg-center opacity-20 mix-blend-luminosity scale-105 pointer-events-none"
             style={{ backgroundImage: `url(${campusBg})` }}
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#001424] via-[#002B49]/90 to-[#001726]/95 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#10324D] via-[#14406a] to-[#0B2438] pointer-events-none" />
 
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1.5 min-w-0">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-400 text-[#002B49] border border-amber-300 shadow-xs">
-                <GraduationCap className="w-4 h-4 text-[#002B49]" />
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-white/10 text-blue-50 border border-white/20 shadow-xs">
+                <GraduationCap className="w-4 h-4 text-amber-300" />
                 <span>{tf('feasibility.header.badge', 'Metodología de Investigación para Estudiantes Universitarios del Ecuador')}</span>
               </div>
 
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight break-words">
                 {tf('feasibility.header.title', 'Simulador de Viabilidad & Matriz de Consistencia 🎓')}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-200 max-w-2xl leading-relaxed">
+              <p className="text-xs sm:text-sm text-blue-100/90 max-w-2xl leading-relaxed">
                 {tf('feasibility.header.subtitle', 'Evaluación diagnóstica basada en los criterios de titulación comunes a las universidades del Ecuador. Contrasta siempre el resultado con el formato de titulación de tu universidad.')}
               </p>
             </div>
 
-            {/* Mode Switcher */}
-            <div className="flex items-center gap-1.5 bg-[#001c30]/90 p-1.5 rounded-2xl border border-white/20 shrink-0 self-start md:self-auto shadow-inner">
+            {/* Mode Switcher — píldora activa azul suave #2E5A87 con texto blanco */}
+            <div className="flex items-center gap-1 bg-black/20 p-1.5 rounded-full border border-white/15 shrink-0 self-start md:self-auto shadow-inner">
               <button
                 onClick={() => setIsFullView(false)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 ${
                   !isFullView
-                    ? 'bg-amber-400 text-[#002B49] shadow-md'
-                    : 'text-slate-300 hover:text-white'
+                    ? 'bg-[#2E5A87] text-white shadow-md hover:bg-[#1F4466]'
+                    : 'text-blue-100/70 hover:text-white'
                 }`}
               >
-                <Layers className="w-3.5 h-3.5" />
+                <Layers className="w-4 h-4" />
                 <span>{tf('feasibility.mode.stepByStep', 'Paso a Paso')}</span>
               </button>
               <button
                 onClick={() => setIsFullView(true)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 ${
                   isFullView
-                    ? 'bg-amber-400 text-[#002B49] shadow-md'
-                    : 'text-slate-300 hover:text-white'
+                    ? 'bg-[#2E5A87] text-white shadow-md hover:bg-[#1F4466]'
+                    : 'text-blue-100/70 hover:text-white'
                 }`}
               >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <FileSpreadsheet className="w-4 h-4" />
                 <span>{tf('feasibility.mode.fullView', 'Vista Completa')}</span>
               </button>
             </div>
@@ -266,7 +269,7 @@ export const TopicFeasibilityCalculator: React.FC = () => {
           {/* Stepper Progress Bar (Step-by-Step Mode) - Fully responsive with min-w-0 */}
           {!isFullView && (
             <div className="relative z-10 mt-6 pt-5 border-t border-white/15 w-full">
-              <div className="grid grid-cols-5 gap-1 sm:gap-2 w-full">
+              <div className="grid grid-cols-5 gap-1.5 sm:gap-2 w-full">
                 {stepsList.map((st) => {
                   const isActive = currentStep === st.num;
                   const isCompleted = currentStep > st.num;
@@ -274,22 +277,22 @@ export const TopicFeasibilityCalculator: React.FC = () => {
                     <button
                       key={st.num}
                       onClick={() => setCurrentStep(st.num)}
-                      className={`text-left p-1.5 sm:p-2 rounded-xl transition-all border min-w-0 ${
+                      className={`text-left px-2 py-2 rounded-2xl transition-all border min-w-0 ${
                         isActive
-                          ? 'bg-amber-400 text-[#002B49] border-amber-300 font-black shadow-md'
+                          ? 'bg-[#2E5A87] text-white border-white/30 font-black shadow-md'
                           : isCompleted
-                          ? 'bg-white/20 text-white border-white/30 hover:bg-white/30'
-                          : 'bg-black/20 text-slate-400 border-white/10 hover:bg-white/10'
+                          ? 'bg-white/10 text-white border-white/15 hover:bg-white/20'
+                          : 'bg-transparent text-blue-100/45 border-white/10 hover:bg-white/10 hover:text-blue-100'
                       }`}
                     >
-                      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                         <span
-                          className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] font-black shrink-0 ${
+                          className={`w-5 h-5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 transition-colors ${
                             isActive
-                              ? 'bg-[#002B49] text-amber-400'
+                              ? 'bg-white text-[#2E5A87]'
                               : isCompleted
-                              ? 'bg-emerald-400 text-emerald-950'
-                              : 'bg-white/20 text-white'
+                              ? 'bg-emerald-400/90 text-emerald-950'
+                              : 'bg-white/15 text-blue-100/70'
                           }`}
                         >
                           {isCompleted ? '✓' : st.num}
@@ -304,11 +307,11 @@ export const TopicFeasibilityCalculator: React.FC = () => {
                 })}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-amber-200 mt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-blue-100/80 mt-3">
                 <span className="truncate">
                   {tf('feasibility.progress.step', 'Paso')} {currentStep} {tf('feasibility.progress.of5', 'de 5')}: {stepsList[currentStep - 1].title}
                 </span>
-                <span className="bg-amber-400/20 px-2.5 py-0.5 rounded-full border border-amber-400/30 shrink-0">
+                <span className="bg-white/10 px-2.5 py-0.5 rounded-full border border-white/20 shrink-0">
                   {tf('feasibility.progress.score', 'Puntaje acumulado:')} {totalScore} / 100 pts
                 </span>
               </div>
