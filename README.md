@@ -204,6 +204,24 @@ El **servicio de originalidad** se despliega aparte como su propio servicio Clou
 > para `*.web.app`/`*.firebaseapp.com` y localhost— y se salta el tope del hosting.
 > En desarrollo (sin esa variable) se usa el mismo origen y todo sigue como antes.
 
+### Despliegue rápido (`deploy.sh`)
+
+Para iterar sin recompilar en cada push, usa el guión de la raíz:
+
+```bash
+bash deploy.sh hosting    # cambio SOLO de interfaz → Firebase Hosting (no toca Cloud Run)
+bash deploy.sh portal     # cambió el servidor del portal (server.ts / proxies) → Cloud Run
+bash deploy.sh detector   # cambió services/originality → Cloud Run
+bash deploy.sh all
+bash deploy.sh status     # revisiones y URLs actuales
+```
+
+Compila la imagen **una vez** (Docker local si está activo, con caché incremental; si
+no, Cloud Build remoto), la sube a Artifact Registry con etiqueta de fecha y despliega
+por referencia `--image`. Así un deploy idéntico repetido es casi instantáneo y los
+cambios de interfaz nunca reconstruyen los contenedores. Las variables de entorno y
+límites de cada servicio se conservan (viven en el servicio, no en la imagen).
+
 ---
 
 <div align="center">
