@@ -73,6 +73,10 @@ function corsHeadersFor(req: Request): Record<string, string> {
     Vary: 'Origin',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    // Sin esto, el navegador no deja leer content-disposition en la respuesta
+    // cross-origin y la descarga usa el nombre por defecto. Se expone para que
+    // el PDF baje con su nombre real (informe-similitud-XXXX.pdf, etc.).
+    'Access-Control-Expose-Headers': 'Content-Disposition',
     'Access-Control-Max-Age': '86400',
   };
 }

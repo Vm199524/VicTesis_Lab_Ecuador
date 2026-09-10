@@ -250,17 +250,17 @@ export function registerRoutes(app) {
       const { overlayToken, excludeCitations } = req.body ?? {};
 
       // Two paths: overlay (with token) or full report (with text).
-      if (overlayToken) {
-        // Overlay path: mark the author's own PDF
-        const stored = takeLayout(overlayToken);
-        if (!stored) {
-          res.status(409).json({
-            error:
-              "No hay un documento original disponible para marcar. Sube de nuevo el PDF y repite el análisis.",
-          });
-          return;
-        }
+      //
+      // El layout del documento original vive en la RAM de la instancia del
+      // detector —efímera en Cloud Run—. Si entre la carga y esta descarga la
+      // instancia se recicló, murió por memoria o pasó el TTL, el token ya no
+      // resuelve. Antes eso era un 409 y el estudiante se quedaba sin informe;
+      // ahora cualquier tropiezo del marcado cae al reimpreso de abajo, que
+      // solo necesita el texto (el cliente siempre lo envía como respaldo).
+      const stored = overlayToken ? takeLayout(overlayToken) : null;
 
+      if (stored) {
+        // Overlay path: mark the author's own PDF
         const started = Date.now();
         const meta = req.body?.meta ?? {};
         const includeAi = req.body?.detectAi !== false;
@@ -291,47 +291,49 @@ export function registerRoutes(app) {
         });
 
         if (!marked) {
-          res.status(409).json({
-            error: "El documento original no admite marcado directo. Descarga el informe reimpreso.",
+          console.warn("[report] el documento original no admite marcado directo; se imprime reimpreso");
+        } else {
+          // Summary first, then the submission itself. The summary omits its
+          // reprinted body when the original follows, so the text appears once —
+          // as the author formatted it, with the matches drawn on top. Only the
+          // pages that actually carry a mark travel with the download — a thesis
+          // can run past a hundred pages and the report exists to be read, not
+          // to reproduce the whole submission a second time.
+          const summary = await printWithAppendix(generateReportPdf, {
+            analysis,
+            text: stored.text,
+            meta,
+            ai: aiResult,
+            // La recomendación de cómo bajar el índice se imprime como anexo final,
+            // después de las hojas marcadas del documento original.
+            includeTail: false,
+            originalPageInfo: { totalPages: marked.pages, keptPages: marked.keptPages },
           });
-          return;
+
+          const annex = await generateReportTailPdf({ analysis, text: stored.text, meta });
+          const pdf = await mergePdfs([summary, marked.buffer, annex]);
+          if (!pdf) {
+            console.warn("[report] el merge del marcado no produjo PDF; se imprime reimpreso");
+          } else {
+            console.log(
+              `Overlay report generated in ${((Date.now() - started) / 1000).toFixed(1)}s — ` +
+                `${marked.marked} passages marked, ${marked.keptPages.length}/${marked.pages} original pages kept, ` +
+                `${(pdf.length / 1024).toFixed(0)} KB total`
+            );
+
+            sendPdf(res, pdf, `informe-similitud-${verificationCode(stored.text)}.pdf`);
+            return;
+          }
         }
-
-        // Summary first, then the submission itself. The summary omits its
-        // reprinted body when the original follows, so the text appears once —
-        // as the author formatted it, with the matches drawn on top. Only the
-        // pages that actually carry a mark travel with the download — a thesis
-        // can run past a hundred pages and the report exists to be read, not
-        // to reproduce the whole submission a second time.
-        const summary = await printWithAppendix(generateReportPdf, {
-          analysis,
-          text: stored.text,
-          meta,
-          ai: aiResult,
-          // La recomendación de cómo bajar el índice se imprime como anexo final,
-          // después de las hojas marcadas del documento original.
-          includeTail: false,
-          originalPageInfo: { totalPages: marked.pages, keptPages: marked.keptPages },
-        });
-
-        const annex = await generateReportTailPdf({ analysis, text: stored.text, meta });
-        const pdf = await mergePdfs([summary, marked.buffer, annex]);
-        if (!pdf) {
-          res.status(500).json({ error: "No se pudo componer el informe." });
-          return;
-        }
-
-        console.log(
-          `Overlay report generated in ${((Date.now() - started) / 1000).toFixed(1)}s — ` +
-            `${marked.marked} passages marked, ${marked.keptPages.length}/${marked.pages} original pages kept, ` +
-            `${(pdf.length / 1024).toFixed(0)} KB total`
+      } else if (overlayToken) {
+        console.warn(
+          `[report] overlayToken ${String(overlayToken).slice(0, 8)}… sin layout en memoria ` +
+            "(instancia reciclada o TTL vencido); se imprime el informe reimpreso"
         );
-
-        sendPdf(res, pdf, `informe-similitud-${verificationCode(stored.text)}.pdf`);
-        return;
       }
 
-      // Text path: generate a full reprinted report
+      // Text path: generate a full reprinted report (y respaldo del marcado
+      // cuando el original ya no está disponible o no admite marcas).
       const { text } = checkTextSchema.parse(req.body);
       const meta = req.body?.meta ?? {};
 

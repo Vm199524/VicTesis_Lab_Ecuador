@@ -272,6 +272,10 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
 
   const inputRef = useRef<HTMLInputElement>(null);
   const tickerRef = useRef<number | null>(null);
+  /** El archivo subido se retiene para poder renovar el token de marcado: el
+   * layout del detector vive en la RAM de su instancia (efímera), así que al
+   * descargar un informe se re-extrae este archivo si hace falta. */
+  const fileRef = useRef<File | null>(null);
 
   const wordCount = useMemo(() => text.split(/\s+/).filter(Boolean).length, [text]);
   const sizeBytes = doc ? doc.sizeBytes : new Blob([text]).size;
@@ -345,8 +349,29 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
     setNotice(null);
     setStatus(IDLE_STATUS);
     stopTicker();
+    fileRef.current = null;
     if (inputRef.current) inputRef.current.value = '';
   }, [stopTicker]);
+
+  /**
+   * Renueva el token de marcado del documento original cuando la instancia del
+   * detector perdió su layout (RAM efímera: instancia reciclada, muerte por
+   * memoria o TTL de 30 min). El cliente conserva el archivo subido, así que
+   * basta con repetir la extracción para dejar el documento en memoria otra vez
+   * con un token fresco, y que el informe vuelva a salir marcado sobre la
+   * carátula original. Devuelve el nuevo token, `null` si el archivo no admite
+   * marcado directo, o lanza si la red falló (el llamador decide el respaldo).
+   */
+  const refreshOverlayToken = useCallback(async (): Promise<string | null> => {
+    const file = fileRef.current;
+    if (!file) return null;
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(originalityUrl('extract'), { method: 'POST', body });
+    const data = await readCheckerJson(response, t('plag.serviceOffline'));
+    if (!response.ok) throw new Error(data.error || t('plag.errorRead'));
+    return data.overlayToken ?? null;
+  }, [t]);
 
   /** Cualquier operación en vuelo: el reinicio a mitad de camino dejaría estado huérfano. */
   const isBusy =
@@ -377,6 +402,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
 
       setIsUploading(true);
       try {
+        fileRef.current = file;
         const body = new FormData();
         body.append('file', file);
         const response = await fetch(originalityUrl('extract'), { method: 'POST', body });
@@ -401,6 +427,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
       } catch (uploadError) {
         setError((uploadError as Error).message);
         setDoc(null);
+        fileRef.current = null;
       } finally {
         setIsUploading(false);
         if (inputRef.current) inputRef.current.value = '';
@@ -500,10 +527,25 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
     setIsDownloading(true);
     setError(null);
     try {
-      // Si hay un token de documento original, marca el PDF original; si no, genera informe completo
-      const body = doc?.overlayToken
-        ? { overlayToken: doc.overlayToken, excludeCitations }
-        : { text, excludeCitations };
+      // El informe se pide marcado sobre el documento original cuando su token
+      // sigue vivo. El layout vive en la RAM de la instancia (efímera), así que
+      // se renueva el token re-extrayendo el archivo retenido justo antes de
+      // descargar. El texto viaja SIEMPRE como respaldo: si el marcado ya no es
+      // posible, el servicio cae al informe reimpreso en lugar de fallar.
+      let overlayToken = doc?.overlayToken ?? null;
+      if (overlayToken && fileRef.current) {
+        try {
+          overlayToken = await refreshOverlayToken();
+        } catch {
+          // Red momentánea: se intenta con el token previo; si el servicio ya no
+          // lo reconoce, su manejador genera el reimpreso.
+        }
+      }
+      const body = {
+        text,
+        excludeCitations,
+        ...(overlayToken ? { overlayToken } : {}),
+      };
 
       const response = await fetch(originalityUrl('report'), {
         method: 'POST',
@@ -570,10 +612,19 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
     try {
       if (!aiResult) await runAiDetection();
 
-      // Con el PDF original disponible, el informe se imprime sobre él: basta
-      // el token, porque el servicio marca el archivo tal como se subió y no
-      // lo que haya ahora en el textarea.
-      const body = doc?.overlayToken ? { overlayToken: doc.overlayToken } : { text };
+      // Igual que en el informe de similitud: se renueva el token re-extrayendo
+      // el archivo retenido (el layout es RAM efímera del detector) y el texto
+      // viaja siempre, para que si el marcado ya no es posible el servicio caiga
+      // al informe reimpreso en lugar de responder 400/409.
+      let overlayToken = doc?.overlayToken ?? null;
+      if (overlayToken && fileRef.current) {
+        try {
+          overlayToken = await refreshOverlayToken();
+        } catch {
+          // Con el token previo basta como intento: el manejador cae al reimpreso.
+        }
+      }
+      const body = { text, ...(overlayToken ? { overlayToken } : {}) };
 
       const response = await fetch(originalityUrl('ai-report'), {
         method: 'POST',
@@ -616,10 +667,19 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
     setIsDownloadingOverlay(true);
     setError(null);
     try {
+      // Token renovado con el archivo retenido, como en los otros dos informes.
+      let overlayToken = doc.overlayToken;
+      if (fileRef.current) {
+        try {
+          overlayToken = (await refreshOverlayToken()) ?? doc.overlayToken;
+        } catch {
+          // Se intenta con el token previo.
+        }
+      }
       const response = await fetch(originalityUrl('report-overlay'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ overlayToken: doc.overlayToken, excludeCitations }),
+        body: JSON.stringify({ overlayToken, excludeCitations, text }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
