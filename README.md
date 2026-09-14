@@ -25,7 +25,26 @@
 
 [![Estado: activo](https://img.shields.io/badge/estado-activo-%23c9a227?style=flat-square&labelColor=%23002B49)](https://github.com/Vm199524/PORTAL-TESIS-ECUADOR)
 [![5 idiomas](https://img.shields.io/badge/idiomas-es%20%7C%20en%20%7C%20pt%20%7C%20fr%20%7C%20it-%23c9a227?style=flat-square&labelColor=%23002B49)]()
+[![Licencia MIT](https://img.shields.io/badge/licencia-MIT-%23c9a227?style=flat-square&labelColor=%23002B49)](LICENSE)
 
+### [🌐 Ver demo en vivo](https://portaltesis.web.app)
+
+</div>
+
+---
+
+## 🖼️ Capturas
+
+> Agrega tus capturas en `docs/screenshots/` con estos nombres exactos y se mostrarán aquí automáticamente.
+> Recomendado: 1280×800 px, formato PNG, navegador en modo claro. Sugerencias de qué capturar:
+> el módulo de Viabilidad & Matriz, el Tutor IA respondiendo una pregunta libre, el Revisor de Borrador
+> con un diagnóstico, y el reporte del verificador de originalidad.
+
+<div align="center">
+<img src="docs/screenshots/dashboard.png" width="410" alt="Panel principal del portal" />
+<img src="docs/screenshots/tutor-ia.png" width="410" alt="Conversación con el Tutor IA" />
+<img src="docs/screenshots/matriz-consistencia.png" width="410" alt="Matriz de consistencia" />
+<img src="docs/screenshots/originalidad.png" width="410" alt="Reporte de verificación de originalidad" />
 </div>
 
 ---
@@ -221,6 +240,12 @@ no, Cloud Build remoto), la sube a Artifact Registry con etiqueta de fecha y des
 por referencia `--image`. Así un deploy idéntico repetido es casi instantáneo y los
 cambios de interfaz nunca reconstruyen los contenedores. Las variables de entorno y
 límites de cada servicio se conservan (viven en el servicio, no en la imagen).
+
+---
+
+## 📄 Licencia
+
+Distribuido bajo licencia [MIT](LICENSE). Puedes usar, modificar y reutilizar el código citando la autoría original.
 
 ---
 
