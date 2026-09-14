@@ -27,7 +27,7 @@
 [![5 idiomas](https://img.shields.io/badge/idiomas-es%20%7C%20en%20%7C%20pt%20%7C%20fr%20%7C%20it-%23c9a227?style=flat-square&labelColor=%23002B49)]()
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-%23c9a227?style=flat-square&labelColor=%23002B49)](LICENSE)
 
-### [🌐 Ver demo en vivo](https://portaltesis.web.app)
+[![Ver demo en vivo](https://img.shields.io/badge/🌐_Ver_demo_en_vivo-002B49?style=for-the-badge&labelColor=c9a227&color=002B49)](https://portaltesis.web.app)
 
 </div>
 
@@ -35,16 +35,12 @@
 
 ## 🖼️ Capturas
 
-> Agrega tus capturas en `docs/screenshots/` con estos nombres exactos y se mostrarán aquí automáticamente.
-> Recomendado: 1280×800 px, formato PNG, navegador en modo claro. Sugerencias de qué capturar:
-> el módulo de Viabilidad & Matriz, el Tutor IA respondiendo una pregunta libre, el Revisor de Borrador
-> con un diagnóstico, y el reporte del verificador de originalidad.
-
 <div align="center">
 <img src="docs/screenshots/dashboard.png" width="410" alt="Panel principal del portal" />
 <img src="docs/screenshots/tutor-ia.png" width="410" alt="Conversación con el Tutor IA" />
 <img src="docs/screenshots/matriz-consistencia.png" width="410" alt="Matriz de consistencia" />
-<img src="docs/screenshots/originalidad.png" width="410" alt="Reporte de verificación de originalidad" />
+<img src="docs/screenshots/originalidad.png" width="410" alt="Reporte de verificación de originalidad (plagio)" />
+<img src="docs/screenshots/deteccion-ia.png" width="410" alt="Detección de contenido generado por IA" />
 </div>
 
 ---
@@ -60,9 +56,10 @@
 | 05 | **Software & Toolbox** | Herramientas de búsqueda, gestión bibliográfica y análisis estadístico. |
 | 06 | **Videoteca** | Rutas de video curadas por etapa del proceso. |
 | 07 | **Revisor de Borrador** | Diagnóstico automatizado del Avance 1 o 2 (estructura, objetivos, requerimientos, citación, redacción y formato). |
-| 08 | **Ver Todo** | Los módulos desplegados en un lienzo continuo. |
+| 08 | **Verificador de Originalidad** | Servicio dedicado de detección de **plagio** y de **contenido generado por IA** en el documento de tesis, con reporte descargable. |
+| 09 | **Ver Todo** | Los módulos desplegados en un lienzo continuo. |
 
-Suma un **Tutor IA** y un **servicio de verificación de originalidad** (detección de plagio/contenido IA).
+Suma también un **Tutor IA** que responde en lenguaje natural sobre metodología y conoce todo el sistema.
 
 ---
 
