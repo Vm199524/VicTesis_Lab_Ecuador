@@ -176,7 +176,7 @@ jobs:
         run: |
           URL=$(gcloud run services describe portaltesisvm --project "$PROJECT" --region "$REGION" --format="value(status.url)")
           echo "Portal: $URL"
-          curl -fsS --max-time 20 -o /dev/null -w "HTTP %{http_code}\n" "$URL" || echo "Sin respuesta aun (arranque en frio); revisar manualmente."
+          curl -fsS --max-time 20 -o /dev/null -w "HTTP %{http_code}\n" "$URL/api/health" || echo "Sin respuesta aun (arranque en frio); revisar manualmente."
 
   # ── 5. Verificador de originalidad -> Cloud Run ─────────────────────────
   detector:

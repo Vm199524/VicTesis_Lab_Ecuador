@@ -600,6 +600,12 @@ app.post('/api/admin/draft-guidance', (req, res) => {
   res.json({ total: entries.length, guidance: entries });
 });
 
+// Chequeo de salud: usado por el pipeline de despliegue (deploy.yml) para
+// confirmar que la revision nueva de Cloud Run ya esta atendiendo trafico.
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
+});
+
 // Sesion de estudiantes: correo/contrasena siempre; Google y GitHub si hay credenciales.
 registerAuthRoutes(app);
 
