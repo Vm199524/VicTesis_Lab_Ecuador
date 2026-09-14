@@ -11,7 +11,7 @@
 
 <img src="docs/logo-tesis-ecuador.svg" width="132" height="132" alt="Logo Tesis Ecuador" />
 
-# VicTesis Lab — Portal Tesis Ecuador
+# VicTesis Lab — Portal Tesis Ec.
 
 **Plataforma web interactiva de apoyo metodológico para estudiantes universitarios de todo el Ecuador en proceso de titulación.**
 
