@@ -1,0 +1,220 @@
+name: Desplegar
+
+# Despliegue automático a producción.
+#
+# CÓMO FUNCIONA:
+#   · Se dispara solo al hacer push a `main` (o a mano desde la pestaña
+#     Actions de GitHub, con "Run workflow").
+#   · Primero corre tests. Si algo falla, NO despliega nada.
+#   · Detecta QUÉ cambió y despliega solo esa parte, reutilizando
+#     `deploy.sh` (la misma lógica que un deploy manual):
+#       - cambios en el frontend (src/, index.html, vite.config.ts...) -> Firebase Hosting
+#       - cambios en el servidor del portal (server.ts, src/server/...) -> Cloud Run (portaltesisvm)
+#       - cambios en services/originality/                              -> Cloud Run (portaltesis-originalidad)
+#     Desplegar de más no rompe nada, solo tarda unos minutos de balde.
+#
+# REQUISITO (configurar UNA sola vez): el secreto GCP_SA_KEY con la clave del
+# service account github-deploy@<proyecto>.iam.gserviceaccount.com.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      forzar:
+        description: "Qué desplegar aunque no haya cambios detectados"
+        required: true
+        default: "auto"
+        type: choice
+        options: [auto, hosting, portal, detector, todos]
+
+env:
+  PROJECT: portal-tesis-ecuador-508108
+  REGION: europe-west1
+
+jobs:
+  # ── 1. Qué hay que desplegar ────────────────────────────────────────────
+  cambios:
+    name: Detectar cambios
+    runs-on: ubuntu-latest
+    outputs:
+      hosting: ${{ steps.detectar.outputs.hosting }}
+      portal: ${{ steps.detectar.outputs.portal }}
+      detector: ${{ steps.detectar.outputs.detector }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: detectar
+        run: |
+          FORZAR="${{ github.event.inputs.forzar || 'auto' }}"
+          if [ "$FORZAR" != "auto" ]; then
+            H=false; P=false; D=false
+            if [ "$FORZAR" = "hosting" ]  || [ "$FORZAR" = "todos" ]; then H=true; fi
+            if [ "$FORZAR" = "portal" ]   || [ "$FORZAR" = "todos" ]; then P=true; fi
+            if [ "$FORZAR" = "detector" ] || [ "$FORZAR" = "todos" ]; then D=true; fi
+            echo "hosting=$H"  >> "$GITHUB_OUTPUT"
+            echo "portal=$P"   >> "$GITHUB_OUTPUT"
+            echo "detector=$D" >> "$GITHUB_OUTPUT"
+            echo "Despliegue forzado a mano: $FORZAR (hosting=$H portal=$P detector=$D)"
+            exit 0
+          fi
+
+          # Primer commit del repo: no hay con qué comparar, se despliega todo.
+          if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
+            echo "hosting=true"  >> "$GITHUB_OUTPUT"
+            echo "portal=true"   >> "$GITHUB_OUTPUT"
+            echo "detector=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ARCHIVOS=$(git diff --name-only HEAD~1 HEAD)
+          echo "Archivos modificados:"; echo "$ARCHIVOS"
+
+          # grep -E no soporta lookahead: no hace falta excluir src/server/ del
+          # patron de hosting, un cambio ahi simplemente dispara los dos
+          # despliegues (portal y hosting), lo cual es inofensivo.
+          H=false; P=false; D=false
+          echo "$ARCHIVOS" | grep -Eq '^(src/|public/|index\.html$|vite\.config\.ts$|tailwind\.config\.js$|firebase\.json$|package(-lock)?\.json$|tsconfig\.json$)' && H=true || true
+          echo "$ARCHIVOS" | grep -Eq '^(server\.ts$|src/server/|Dockerfile$|package(-lock)?\.json$|tsconfig\.json$)' && P=true || true
+          echo "$ARCHIVOS" | grep -q '^services/originality/' && D=true || true
+
+          echo "hosting=$H"  >> "$GITHUB_OUTPUT"
+          echo "portal=$P"   >> "$GITHUB_OUTPUT"
+          echo "detector=$D" >> "$GITHUB_OUTPUT"
+          echo "-> hosting=$H  portal=$P  detector=$D"
+
+  # ── 2. Pruebas (bloquean el despliegue) ─────────────────────────────────
+  pruebas-portal:
+    name: Pruebas del portal (frontend/servidor)
+    runs-on: ubuntu-latest
+    needs: cambios
+    if: needs.cambios.outputs.hosting == 'true' || needs.cambios.outputs.portal == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Chequeo de tipos
+        run: npm run lint
+      - name: Build de verificación
+        run: npm run build
+
+  pruebas-detector:
+    name: Pruebas del verificador de originalidad
+    runs-on: ubuntu-latest
+    needs: cambios
+    if: needs.cambios.outputs.detector == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: services/originality/package-lock.json
+      - working-directory: services/originality
+        run: npm ci
+      - name: Tests unitarios
+        # Solo la parte "unidad" de tests/run-all.mjs: no necesita red, servidor
+        # levantado, ni LibreOffice/Chromium (esos solo existen dentro de la
+        # imagen Docker). Las suites "red"/"http" quedan fuera del gate de CI
+        # por depender de servicios externos y del entorno completo del
+        # contenedor -- se siguen corriendo a mano antes de un cambio grande.
+        working-directory: services/originality
+        run: |
+          node --test \
+            tests/readable.test.mjs \
+            tests/semantic.test.mjs \
+            tests/corpus.test.mjs \
+            tests/report.test.mjs \
+            tests/layout.test.mjs \
+            tests/docx-overlay.test.mjs \
+            tests/ai-detect.test.mjs
+
+  # ── 3. Frontend -> Firebase Hosting ─────────────────────────────────────
+  hosting:
+    name: Desplegar Hosting (Firebase)
+    runs-on: ubuntu-latest
+    needs: [cambios, pruebas-portal]
+    if: needs.cambios.outputs.hosting == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT }}
+      - run: npm install -g firebase-tools
+      - run: bash deploy.sh hosting
+
+  # ── 4. Servidor del portal -> Cloud Run ─────────────────────────────────
+  portal:
+    name: Desplegar portal (Cloud Run)
+    runs-on: ubuntu-latest
+    needs: [cambios, pruebas-portal]
+    if: needs.cambios.outputs.portal == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT }}
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - run: bash deploy.sh portal
+      - name: Verificar que responde
+        run: |
+          URL=$(gcloud run services describe portaltesisvm --project "$PROJECT" --region "$REGION" --format="value(status.url)")
+          echo "Portal: $URL"
+          curl -fsS --max-time 20 -o /dev/null -w "HTTP %{http_code}\n" "$URL" || echo "Sin respuesta aun (arranque en frio); revisar manualmente."
+
+  # ── 5. Verificador de originalidad -> Cloud Run ─────────────────────────
+  detector:
+    name: Desplegar originalidad (Cloud Run)
+    runs-on: ubuntu-latest
+    needs: [cambios, pruebas-detector]
+    if: needs.cambios.outputs.detector == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT }}
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - run: bash deploy.sh detector
+      - name: Verificar que responde
+        run: |
+          URL=$(gcloud run services describe portaltesis-originalidad --project "$PROJECT" --region "$REGION" --format="value(status.url)")
+          echo "Originalidad: $URL"
+          curl -fsS --max-time 20 -o /dev/null -w "HTTP %{http_code}\n" "$URL/api/corpus/stats" || echo "Sin respuesta aun (arranque en frio); revisar manualmente."
+
+  # ── 6. Resumen legible en la pestaña Actions ────────────────────────────
+  resumen:
+    name: Resumen
+    runs-on: ubuntu-latest
+    needs: [cambios, hosting, portal, detector]
+    if: always()
+    steps:
+      - run: |
+          {
+            echo "### Resultado del despliegue"
+            echo ""
+            echo "| Parte | ¿Tenía cambios? | Resultado |"
+            echo "|---|---|---|"
+            echo "| Hosting (Firebase)          | ${{ needs.cambios.outputs.hosting }}  | ${{ needs.hosting.result }} |"
+            echo "| Portal (Cloud Run)          | ${{ needs.cambios.outputs.portal }}   | ${{ needs.portal.result }} |"
+            echo "| Originalidad (Cloud Run)    | ${{ needs.cambios.outputs.detector }} | ${{ needs.detector.result }} |"
+            echo ""
+            echo "\`skipped\` = esa parte no cambió, no hacía falta desplegarla."
+          } >> "$GITHUB_STEP_SUMMARY"
