@@ -152,6 +152,7 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT }}
+      - run: npm ci
       - run: npm install -g firebase-tools
       - run: bash deploy.sh hosting
 
