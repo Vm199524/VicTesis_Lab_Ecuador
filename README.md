@@ -251,7 +251,7 @@ Distribuido bajo licencia [MIT](LICENSE). Puedes usar, modificar y reutilizar el
 
 <div align="center">
 
-**VicTesis Lab · Portal Tesis Ecuador** — *de la idea a la victoria*: recursos, tutoría y formación académica para la titulación.
+**VicTesis Lab · Portal Tesis Ec.** — *de la idea a la victoria*: recursos, tutoría y formación académica para la titulación.
 
 <sub>Proyecto académico · **Victor Manuel LLuilema Pisco** · Universidad Estatal de Milagro (UNEMI)</sub>
 
