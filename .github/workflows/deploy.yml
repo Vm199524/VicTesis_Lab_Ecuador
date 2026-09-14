@@ -154,7 +154,15 @@ jobs:
           project_id: ${{ env.PROJECT }}
       - run: npm ci
       - run: npm install -g firebase-tools
-      - run: bash deploy.sh hosting
+      - name: Build y publicar en Firebase Hosting
+        env:
+          # Ver la nota en el Dockerfile raiz / OriginalityCheckContext.tsx:
+          # sin esta variable el modulo de originalidad usa una ruta relativa
+          # que Firebase Hosting corta a los 60s (VITE_* solo llega al bundle
+          # si existe en el entorno del build; no viene de ningun .env
+          # versionado).
+          VITE_ORIGINALITY_API_URL: https://portaltesisvm-1004187222399.europe-west1.run.app
+        run: bash deploy.sh hosting
 
   # ── 4. Servidor del portal -> Cloud Run ─────────────────────────────────
   portal:

@@ -16,6 +16,16 @@ RUN npm ci
 # Código fuente (ver .dockerignore para lo que se excluye).
 COPY . .
 
+# URL publica del propio Cloud Run del portal, horneada en el bundle del
+# frontend (Vite solo expone VITE_* que existan en el entorno del build).
+# Sin esto el modulo de originalidad usa una ruta relativa que pasa por
+# Firebase Hosting, cuyo limite de 60s corta un analisis que tarda varios
+# minutos (ver nota en src/context/OriginalityCheckContext.tsx). El valor
+# por defecto es la URL real y estable del servicio; --build-arg la
+# sobreescribe si el servicio se recrea con otra URL.
+ARG VITE_ORIGINALITY_API_URL=https://portaltesisvm-1004187222399.europe-west1.run.app
+ENV VITE_ORIGINALITY_API_URL=$VITE_ORIGINALITY_API_URL
+
 # Compila el frontend (dist/) y empaqueta el servidor (dist/server.cjs).
 RUN npm run build
 
