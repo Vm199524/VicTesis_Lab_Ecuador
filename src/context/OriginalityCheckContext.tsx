@@ -15,10 +15,13 @@ import { usePreferences } from './PreferencesContext';
 
 /** Espejo de TEXT_LIMITS y UPLOAD_LIMITS del servicio de originalidad. */
 export const TEXT_LIMITS = { min: 100, max: 120_000 };
+// Word (.docx) queda anulado por ahora: la conversión a PDF fallaba más de lo
+// que ayudaba, así que la subida se limita a PDF y TXT, que son los formatos
+// que el servicio responde bien. Reincluir el resto es ampliar estas dos listas.
 export const UPLOAD = {
   maxBytes: 25 * 1024 * 1024,
-  extensions: ['.pdf', '.docx', '.doc', '.rtf', '.txt', '.md'],
-  accept: '.pdf,.docx,.doc,.rtf,.txt,.md',
+  extensions: ['.pdf', '.txt'],
+  accept: '.pdf,.txt',
 };
 
 /* ------------------------------------------------------------------ *
@@ -83,10 +86,19 @@ export interface ExtractedDoc {
   truncated: boolean;
   sizeBytes: number;
   /**
-   * Clave para pedir el informe dibujado sobre el PDF original en vez de
-   * reimpreso. Solo existe cuando la extracción tuvo geometría de página que
-   * conservar —un PDF sin recortar—; el texto pegado a mano o un .docx no
-   * tienen coordenadas, así que aquí llega `null` y ese botón no se ofrece.
+   * Título y autor que el propio archivo declara (la ficha del PDF, o la que
+   * LibreOffice conserva al convertir un .docx). Van a la portada del informe
+   * para que diga de qué trabajo es; si el archivo no los trae, el servicio
+   * imprime «Documento sin título» en lugar de inventárselos.
+   */
+  meta: Record<string, unknown>;
+  /**
+   * Clave para pedir el informe dibujado sobre el original en vez de reimpreso.
+   * Solo existe cuando la extracción tuvo geometría de página que conservar: un
+   * PDF sin recortar, o un .docx que el detector convirtió a PDF con LibreOffice
+   * (carátula, encabezados y pies incluidos). El texto pegado a mano, .txt, .rtf
+   * o .doc no tienen coordenadas, así que aquí llega `null` y esa variante del
+   * informe no se ofrece.
    */
   overlayToken: string | null;
 }
@@ -199,7 +211,6 @@ interface OriginalityCheckContextValue {
   isUploading: boolean;
   isDownloading: boolean;
   isDownloadingAi: boolean;
-  isDownloadingOverlay: boolean;
   isDetectingAi: boolean;
   result: CheckResult | null;
   aiResult: AiResult | null;
@@ -261,7 +272,6 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadingAi, setIsDownloadingAi] = useState(false);
-  const [isDownloadingOverlay, setIsDownloadingOverlay] = useState(false);
   const [isDetectingAi, setIsDetectingAi] = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
   const [aiResult, setAiResult] = useState<AiResult | null>(null);
@@ -354,24 +364,81 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
   }, [stopTicker]);
 
   /**
-   * Renueva el token de marcado del documento original cuando la instancia del
-   * detector perdió su layout (RAM efímera: instancia reciclada, muerte por
-   * memoria o TTL de 30 min). El cliente conserva el archivo subido, así que
-   * basta con repetir la extracción para dejar el documento en memoria otra vez
-   * con un token fresco, y que el informe vuelva a salir marcado sobre la
-   * carátula original. Devuelve el nuevo token, `null` si el archivo no admite
-   * marcado directo, o lanza si la red falló (el llamador decide el respaldo).
+   * Pide un informe y devuelve la respuesta, reenviando el archivo si hace falta.
+   *
+   * El `overlayToken` que permite marcar el documento original vive en la RAM de
+   * la instancia que lo extrajo, y en Cloud Run esa instancia es efímera: entre
+   * la subida y la descarga puede reciclarse, y el token deja de resolver. Antes
+   * el remedio era re-subir el archivo en cada descarga —con lo que un .docx
+   * volvía a pasar por LibreOffice entero, la etapa más lenta del servicio— y
+   * aun así el token podía quedar en una instancia y la descarga en otra.
+   *
+   * Ahora se intenta primero con el token, que no mueve ni un byte, y solo si el
+   * servicio responde 409 (`overlay-expired`) se reenvía el archivo. Entonces la
+   * extracción y el marcado ocurren en esa misma petición, así que el token
+   * recién creado no puede caducar por el camino.
    */
-  const refreshOverlayToken = useCallback(async (): Promise<string | null> => {
-    const file = fileRef.current;
-    if (!file) return null;
-    const body = new FormData();
-    body.append('file', file);
-    const response = await fetch(originalityUrl('extract'), { method: 'POST', body });
-    const data = await readCheckerJson(response, t('plag.serviceOffline'));
-    if (!response.ok) throw new Error(data.error || t('plag.errorRead'));
-    return data.overlayToken ?? null;
-  }, [t]);
+  const downloadReport = useCallback(
+    async (
+      endpoint: 'report' | 'ai-report',
+      body: Record<string, unknown>,
+      errorKey: string
+    ): Promise<Response> => {
+      const post = (payload: Record<string, unknown> | FormData) =>
+        fetch(originalityUrl(endpoint), {
+          method: 'POST',
+          ...(payload instanceof FormData
+            ? { body: payload }
+            : {
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              }),
+        });
+
+      let response = await post(body);
+
+      const expired = await response
+        .clone()
+        .json()
+        .then((data) => response.status === 409 && data?.code === 'overlay-expired')
+        .catch(() => false);
+
+      if (expired && fileRef.current) {
+        const form = new FormData();
+        form.append('file', fileRef.current);
+        for (const [key, value] of Object.entries(body)) {
+          // El token caducado no se reenvía: el archivo lo sustituye.
+          if (key === 'overlayToken' || value === undefined || value === null) continue;
+          form.append(key, typeof value === 'string' ? value : JSON.stringify(value));
+        }
+        response = await post(form);
+      }
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || t(errorKey));
+      }
+
+      return response;
+    },
+    [t]
+  );
+
+  /** Entrega al navegador el PDF de una respuesta ya validada. */
+  const savePdf = useCallback((response: Response, fallbackName: string) => {
+    return response.blob().then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download =
+        response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] ||
+        fallbackName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    });
+  }, []);
 
   /** Cualquier operación en vuelo: el reinicio a mitad de camino dejaría estado huérfano. */
   const isBusy =
@@ -379,7 +446,6 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
     isUploading ||
     isDownloading ||
     isDownloadingAi ||
-    isDownloadingOverlay ||
     isDetectingAi;
   const hasSomethingToClear = text.length > 0 || doc !== null || result !== null;
 
@@ -416,6 +482,7 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
           words: data.words,
           truncated: data.truncated,
           sizeBytes: file.size,
+          meta: data.meta ?? {},
           overlayToken: data.overlayToken ?? null,
         });
         resetAnalysis();
@@ -526,47 +593,30 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
   const handleDownloadReport = async () => {
     setIsDownloading(true);
     setError(null);
+    setNotice(null);
     try {
-      // El informe se pide marcado sobre el documento original cuando su token
-      // sigue vivo. El layout vive en la RAM de la instancia (efímera), así que
-      // se renueva el token re-extrayendo el archivo retenido justo antes de
-      // descargar. El texto viaja SIEMPRE como respaldo: si el marcado ya no es
-      // posible, el servicio cae al informe reimpreso en lugar de fallar.
-      let overlayToken = doc?.overlayToken ?? null;
-      if (overlayToken && fileRef.current) {
-        try {
-          overlayToken = await refreshOverlayToken();
-        } catch {
-          // Red momentánea: se intenta con el token previo; si el servicio ya no
-          // lo reconoce, su manejador genera el reimpreso.
-        }
-      }
-      const body = {
-        text,
-        excludeCitations,
-        ...(overlayToken ? { overlayToken } : {}),
-      };
+      // El texto viaja siempre: es lo que permite imprimir el informe reimpreso
+      // cuando el documento no tiene geometría de página (texto pegado, .txt,
+      // .rtf, .doc). El token solo añade el marcado sobre el original.
+      const response = await downloadReport(
+        'report',
+        {
+          text,
+          excludeCitations,
+          detectAi: true,
+          meta: doc?.meta ?? {},
+          ...(doc?.overlayToken ? { overlayToken: doc.overlayToken } : {}),
+        },
+        'plag.errorReport'
+      );
 
-      const response = await fetch(originalityUrl('report'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || t('plag.errorReport'));
+      // Con documento subido, un «reimpreso» significa que la carátula original
+      // no llegó al PDF. El estudiante tiene que enterarse aquí y no al abrirlo.
+      if (doc?.overlayToken && response.headers.get('x-report-source') === 'reprinted') {
+        setNotice(t('plag.reportReprinted'));
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download =
-        response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] ||
-        'informe-similitud.pdf';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+
+      await savePdf(response, 'informe-similitud.pdf');
     } catch (reportError) {
       setError((reportError as Error).message);
     } finally {
@@ -612,95 +662,29 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
     try {
       if (!aiResult) await runAiDetection();
 
-      // Igual que en el informe de similitud: se renueva el token re-extrayendo
-      // el archivo retenido (el layout es RAM efímera del detector) y el texto
-      // viaja siempre, para que si el marcado ya no es posible el servicio caiga
-      // al informe reimpreso en lugar de responder 400/409.
-      let overlayToken = doc?.overlayToken ?? null;
-      if (overlayToken && fileRef.current) {
-        try {
-          overlayToken = await refreshOverlayToken();
-        } catch {
-          // Con el token previo basta como intento: el manejador cae al reimpreso.
-        }
-      }
-      const body = { text, ...(overlayToken ? { overlayToken } : {}) };
+      // Mismo camino que el informe de similitud: token primero —que no mueve ni
+      // un byte— y reenvío del archivo solo si el servicio dice que ya no lo
+      // tiene. El texto viaja siempre para que, sin geometría que marcar, el
+      // servicio imprima el reimpreso en lugar de responder con un error.
+      const response = await downloadReport(
+        'ai-report',
+        {
+          text,
+          meta: doc?.meta ?? {},
+          ...(doc?.overlayToken ? { overlayToken: doc.overlayToken } : {}),
+        },
+        'plag.errorAiReport'
+      );
 
-      const response = await fetch(originalityUrl('ai-report'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || t('plag.errorAiReport'));
+      if (doc?.overlayToken && response.headers.get('x-report-source') === 'reprinted') {
+        setNotice(t('plag.reportReprinted'));
       }
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download =
-        response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] ||
-        'informe-ia.pdf';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      await savePdf(response, 'informe-ia.pdf');
     } catch (reportError) {
       setError((reportError as Error).message);
     } finally {
       setIsDownloadingAi(false);
-    }
-  };
-
-  /**
-   * Informe de similitud dibujado sobre el PDF que subió el alumno.
-   *
-   * A diferencia de los otros dos, no envía el texto: el servicio marca el
-   * archivo tal como se subió, no lo que haya en el `textarea` en este
-   * momento —si el texto se editó tras la carga, `doc` ya es `null` y este
-   * botón ni se muestra—, así que basta con el token.
-   */
-  const handleDownloadOverlayReport = async () => {
-    if (!doc?.overlayToken) return;
-    setIsDownloadingOverlay(true);
-    setError(null);
-    try {
-      // Token renovado con el archivo retenido, como en los otros dos informes.
-      let overlayToken = doc.overlayToken;
-      if (fileRef.current) {
-        try {
-          overlayToken = (await refreshOverlayToken()) ?? doc.overlayToken;
-        } catch {
-          // Se intenta con el token previo.
-        }
-      }
-      const response = await fetch(originalityUrl('report-overlay'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ overlayToken, excludeCitations, text }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || t('plag.errorOverlayReport'));
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download =
-        response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] ||
-        'original-marcado.pdf';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (reportError) {
-      setError((reportError as Error).message);
-    } finally {
-      setIsDownloadingOverlay(false);
     }
   };
 
@@ -716,7 +700,6 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
       isUploading,
       isDownloading,
       isDownloadingAi,
-      isDownloadingOverlay,
       isDetectingAi,
       result,
       aiResult,
@@ -745,7 +728,6 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
       handleDownloadReport,
       handleDetectAi,
       handleDownloadAiReport,
-      handleDownloadOverlayReport,
     }),
     [
       text,
@@ -755,7 +737,6 @@ export const OriginalityCheckProvider: React.FC<{ children: React.ReactNode }> =
       isUploading,
       isDownloading,
       isDownloadingAi,
-      isDownloadingOverlay,
       isDetectingAi,
       result,
       aiResult,

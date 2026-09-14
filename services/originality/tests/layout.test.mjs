@@ -140,6 +140,66 @@ if (!fs.existsSync(SAMPLE_PDF)) {
     "rechaza un layout vacio",
     (await overlayHighlights({ pdfBuffer: buffer, layout: null, ranges: [] })) === null
   );
+
+  // El recorte del anexo: solo viajan las paginas marcadas, y la caratula
+  // viaja ademas aunque no lleve marca (es la que identifica el trabajo). Se
+  // marca a proposito una pagina que no es la primera, porque marcar la
+  // caratula haria pasar la comprobacion sin ejercitar la excepcion.
+  if (layout.pages.length > 1) {
+    console.log("\nrecorte del anexo (solo lo marcado, mas la caratula)");
+
+    const later = layout.items.find(
+      (item) => item.page > 1 && item.str.trim().length > 12
+    );
+
+    if (!later) {
+      console.log("  (omitido: la muestra no tiene texto en paginas posteriores)");
+    } else {
+      const range = [
+        { textStart: later.textStart, textEnd: later.textEnd, similarity: 55, color: "#f97316" },
+      ];
+
+      const trimmed = await overlayHighlights({
+        pdfBuffer: buffer,
+        layout,
+        ranges: range,
+        onlyMarkedPages: true,
+        keepCover: true,
+      });
+      const withoutCover = await overlayHighlights({
+        pdfBuffer: buffer,
+        layout,
+        ranges: range,
+        onlyMarkedPages: true,
+      });
+
+      check(
+        "la caratula viaja sin llevar marca",
+        trimmed?.keptPages.includes(1) === true,
+        `kept=${JSON.stringify(trimmed?.keptPages)} marked=${JSON.stringify(trimmed?.markedPages)}`
+      );
+      check(
+        "la caratula no se anuncia como marcada",
+        trimmed?.markedPages.includes(1) === false
+      );
+      check(
+        "sin keepCover solo viaja lo marcado",
+        withoutCover?.keptPages.length === withoutCover?.markedPages.length,
+        `${withoutCover?.keptPages.length} vs ${withoutCover?.markedPages.length}`
+      );
+      check(
+        "el anexo tiene tantas paginas como paginas conservadas",
+        (await extractDocumentText(trimmed.buffer, "anexo.pdf")).meta.pages ===
+          trimmed.keptPages.length,
+        `${trimmed.keptPages.length} conservadas`
+      );
+      check(
+        "las paginas conservadas van en orden y son del original",
+        trimmed.keptPages.every((page) => page > 0 && page <= layout.pages.length) &&
+          trimmed.keptPages.every((page, index, all) => index === 0 || page > all[index - 1])
+      );
+    }
+  }
 }
 
 console.log(fails === 0 ? "\nTodo correcto." : `\n${fails} comprobacion(es) fallaron.`);

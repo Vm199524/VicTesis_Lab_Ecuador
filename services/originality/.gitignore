@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Bases de datos locales (corpus real y fixtures de test). El corpus de
+# produccion vive en Cloud Storage (ver server/corpus.js, CORPUS_BUCKET);
+# la copia local solo es un artefacto de desarrollo/tests, nunca debe
+# versionarse.
+data/*.db
+data/*.db-shm
+data/*.db-wal

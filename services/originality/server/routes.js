@@ -16,7 +16,7 @@ import {
 import { overlayHighlights } from "./overlay.js";
 import { mergePdfs, originalStartsAt, pageCount } from "./reportMerge.js";
 import { storeLayout, takeLayout } from "./reportStore.js";
-import { indexDocument, forget, corpusStats, checksumOf } from "./corpus.js";
+import { indexDocument, forget, corpusStats, checksumOf, persistCorpus } from "./corpus.js";
 import { harvestRepository, probeRepository } from "./harvest.js";
 import { detectAiText, detectAiPassages } from "./ai-detect.js";
 
@@ -40,6 +40,91 @@ function sendPdf(res, buffer, filename) {
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.setHeader("Content-Length", buffer.length);
   res.end(buffer);
+}
+
+/**
+ * Acepta un archivo adjunto, pero solo cuando la petición lo trae.
+ *
+ * Un informe se pide de dos maneras: con el `overlayToken` que dejó la subida
+ * —lo normal, y no viaja ni un byte del documento— o reenviando el archivo,
+ * que es lo que hace el cliente cuando la instancia que lo extrajo ya no
+ * existe. Las peticiones JSON de toda la vida no pasan por aquí: preguntar por
+ * el tipo de contenido antes de invocar a multer evita que un cuerpo JSON se
+ * interprete como un formulario vacío.
+ *
+ * @returns {Promise<Error|null>} El error de subida, o null si no hubo.
+ */
+function receiveFile(req, res) {
+  return new Promise((resolve) => {
+    if (!req.is("multipart/form-data")) {
+      resolve(null);
+      return;
+    }
+    upload.single("file")(req, res, (error) => resolve(error ?? null));
+  });
+}
+
+/**
+ * Los campos de un formulario llegan como texto.
+ *
+ * Un `multipart/form-data` no distingue `true` de `"true"`, así que un booleano
+ * que llegue por ahí hay que interpretarlo; el valor por defecto cubre el campo
+ * ausente, que en JSON y en formulario se ven igual.
+ */
+function asBoolean(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return value === true || value === "true" || value === "1" || value === 1;
+}
+
+/** `meta` viaja como objeto en JSON y como texto JSON dentro de un formulario. */
+function parseMeta(value) {
+  if (value && typeof value === "object") return value;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+/**
+ * Descarga un archivo subido para marcar sobre él, o explica por qué no se pudo.
+ *
+ * Se devuelve también el texto cuando la conversión no dio geometría —un .docx
+ * sin LibreOffice, o uno tan largo que hubo que recortarlo—: en ese caso el
+ * informe reimpreso sigue siendo un informe completo, y reenviar el archivo no
+ * cambiaría nada, así que el llamador cae a él en lugar de pedir un reintento.
+ *
+ * @returns {Promise<{buffer: Buffer, layout: object, text: string, filename: string}|{text: string}>}
+ */
+async function originalFromUpload(file) {
+  const { text, layout, pdfBuffer } = await extractDocumentLayout(file.buffer, file.originalname);
+
+  // Mismo corte que aplica `/api/extract`, y por el mismo motivo que allí: el
+  // análisis no admite más de `maxChars`, y los desplazamientos que devuelve
+  // sobre ese prefijo siguen cayendo sobre las primeras páginas de la maqueta.
+  const clipped = text.length > LIMITS.maxChars ? text.slice(0, LIMITS.maxChars) : text;
+
+  // Sin geometría no hay coordenadas que marcar y el llamador imprime el
+  // reimpreso; con ella, el informe lleva las hojas del original marcadas.
+  if (!layout || !pdfBuffer) return { text: clipped };
+
+  return { buffer: pdfBuffer, layout, text: clipped, filename: file.originalname };
+}
+
+/** Las coincidencias que se dibujan sobre el original, con su banda de color. */
+function overlayRanges(analysis) {
+  return (analysis.results ?? [])
+    .filter((r) => r.similarity >= 15 && Number.isFinite(r.start))
+    .map((r, index) => ({
+      textStart: r.start,
+      textEnd: r.end ?? r.start + r.sentence.length,
+      similarity: r.similarity,
+      color: classify(r.similarity).color,
+      label: String(index + 1),
+    }));
 }
 
 /**
@@ -77,6 +162,24 @@ function getCached(key) {
 /** Merge one result part into the cache entry for `key` (never drops others). */
 function cachePut(key, part) {
   analysisCache.set(key, { ...(getCached(key) ?? {}), ...part, at: Date.now() });
+}
+
+/**
+ * Vacía la caché de análisis.
+ *
+ * Un análisis depende del corpus local: indexar o borrar un documento cambia
+ * las coincidencias que arrojaría. Sin esto, un documento suprimido seguiría
+ * apareciendo como fuente hasta que venciera su TTL —media hora—, y el derecho
+ * de supresión, que existe justamente para retirar un trabajo ajeno, quedaría
+ * en entredicho dentro de la misma instancia que lo conserva.
+ *
+ * Se vacía entera y no por entradas porque averiguar cuáles dependían del
+ * documento tocado exige reproducir la búsqueda que la caché venía a evitar; el
+ * corpus cambia por acciones puntuales —indexar, cosechar, borrar— y el precio
+ * de la siguiente comprobación es el de siempre, no uno añadido.
+ */
+function clearAnalysisCache() {
+  analysisCache.clear();
 }
 
 /** Reuse the plagiarism analysis for `text` or run it once and keep it. */
@@ -126,6 +229,87 @@ const upload = multer({
   },
 });
 
+/**
+ * El informe de similitud completo: resumen, original marcado y anexo.
+ *
+ * El resumen no reimprime el cuerpo del documento —el original viene detrás con
+ * los colores encima— así que el texto aparece una sola vez, tal como lo
+ * escribió el autor, y solo viajan las hojas que llevan alguna marca más la
+ * carátula, que es la que identifica de qué trabajo es el informe.
+ *
+ * @returns {Promise<{pdf: Buffer, marked: object}|null>} null cuando el
+ *   documento no admite marcado, y el llamador imprime el reimpreso.
+ */
+async function printSimilarityReport({ original, analysis, meta, aiResult }) {
+  const marked = await overlayHighlights({
+    pdfBuffer: original.buffer,
+    layout: original.layout,
+    ranges: overlayRanges(analysis),
+    footer: "Tesis Ecuador · Informe de similitud sobre el documento original",
+    onlyMarkedPages: true,
+    keepCover: true,
+  });
+  if (!marked) return null;
+
+  const summary = await printWithAppendix(generateReportPdf, {
+    analysis,
+    text: original.text,
+    meta,
+    ai: aiResult,
+    // La recomendación de cómo bajar el índice se imprime como anexo final,
+    // después de las hojas marcadas del documento original.
+    includeTail: false,
+    originalPageInfo: {
+      totalPages: marked.pages,
+      keptPages: marked.keptPages,
+      markedPages: marked.markedPages,
+    },
+  });
+
+  const annex = await generateReportTailPdf({ analysis, text: original.text, meta });
+  const pdf = await mergePdfs([summary, marked.buffer, annex]);
+  return pdf ? { pdf, marked } : null;
+}
+
+/**
+ * El informe de escritura con IA: resumen, original marcado y guía de reescritura.
+ *
+ * Mismo esqueleto que el de similitud, pero lo que se dibuja sobre el original
+ * son los bloques con indicio de IA, no las coincidencias con fuentes: son dos
+ * preguntas distintas y el lector no debe confundir una marca con la otra.
+ */
+async function printAiReport({ original, ai, text, meta, passages }) {
+  const marked = await overlayHighlights({
+    pdfBuffer: original.buffer,
+    layout: original.layout,
+    ranges: passages,
+    footer: "Tesis Ecuador · Indicio de escritura con IA sobre el documento original",
+    onlyMarkedPages: true,
+    // La carátula viaja siempre: es la que dice de qué trabajo es el informe.
+    keepCover: true,
+  });
+  if (!marked) return null;
+
+  const summary = await printWithAppendix(generateAiReportPdf, {
+    ai,
+    text,
+    meta,
+    passages,
+    // La guía de reescritura se imprime como anexo final, tras las hojas
+    // marcadas del documento original.
+    includeTail: false,
+    originalPageInfo: {
+      totalPages: marked.pages,
+      keptPages: marked.keptPages,
+      markedPages: marked.markedPages,
+    },
+  });
+
+  const annex = await generateAiReportTailPdf({ ai, text, meta });
+  const pdf = await mergePdfs([summary, marked.buffer, annex]);
+  return pdf ? { pdf, marked } : null;
+}
+
 export function registerRoutes(app) {
   app.get("/api/limits", (_req, res) => {
     res.json({
@@ -173,20 +357,26 @@ export function registerRoutes(app) {
 
         // The overlay report marks the file as uploaded, not whatever the
         // client edits afterward — so it is kept against the untouched text
-        // and offered only when there is page geometry to draw on (PDF, and
-        // not truncated: a cut document no longer matches its own layout).
-        const overlayToken =
-          layout && !truncated
-            ? storeLayout({
-                // A converted DOCX stores the LibreOffice PDF output — the
-                // file the layout coordinates actually describe — never the
-                // original upload, which has no page geometry of its own.
-                buffer: pdfBuffer ?? req.file.buffer,
-                layout,
-                text: finalText,
-                filename: req.file.originalname,
-              })
-            : null;
+        // and offered whenever there is page geometry to draw on.
+        //
+        // Un texto recortado al límite de caracteres también sirve: el recorte
+        // es un prefijo del documento, así que los desplazamientos que devuelve
+        // el análisis siguen cayendo sobre las primeras páginas de la maqueta.
+        // Lo único que se pierde son las marcas más allá del corte, que nunca
+        // llegaron a analizarse. Antes se renunciaba al marcado entero en ese
+        // caso y una tesis completa —más larga que el límite— descargaba su
+        // informe reimpreso como texto libre, sin carátula ni encabezados.
+        const overlayToken = layout
+          ? storeLayout({
+              // A converted DOCX stores the LibreOffice PDF output — the
+              // file the layout coordinates actually describe — never the
+              // original upload, which has no page geometry of its own.
+              buffer: pdfBuffer ?? req.file.buffer,
+              layout,
+              text: finalText,
+              filename: req.file.originalname,
+            })
+          : null;
 
         res.json({
           text: finalText,
@@ -242,123 +432,96 @@ export function registerRoutes(app) {
    * The analysis is re-run rather than accepted from the client: a report is
    * an attestable document, so its numbers have to come from this server.
    *
-   * Optionally accepts `overlayToken` to mark the original PDF instead of
-   * generating a reprinted report. This preserves the author's formatting.
+   * The author's own document is marked and attached when it can be had —
+   * either from the `overlayToken` left by `/api/extract`, or from the file
+   * itself when the client re-sends it (see `receiveFile`). Without either,
+   * or when the document carries no page geometry, the report is reprinted
+   * from the text alone.
    */
   app.post("/api/report", async (req, res) => {
     try {
-      const { overlayToken, excludeCitations } = req.body ?? {};
-
-      // Two paths: overlay (with token) or full report (with text).
-      //
-      // El layout del documento original vive en la RAM de la instancia del
-      // detector —efímera en Cloud Run—. Si entre la carga y esta descarga la
-      // instancia se recicló, murió por memoria o pasó el TTL, el token ya no
-      // resuelve. Antes eso era un 409 y el estudiante se quedaba sin informe;
-      // ahora cualquier tropiezo del marcado cae al reimpreso de abajo, que
-      // solo necesita el texto (el cliente siempre lo envía como respaldo).
-      const stored = overlayToken ? takeLayout(overlayToken) : null;
-
-      if (stored) {
-        // Overlay path: mark the author's own PDF
-        const started = Date.now();
-        const meta = req.body?.meta ?? {};
-        const includeAi = req.body?.detectAi !== false;
-
-        // El análisis ya se hizo durante la comprobación: se reutiliza en lugar
-        // de volver a escanear la web (la caché hace que descargar solo imprima).
-        const { analysis } = await analysisForKey(stored.text, excludeCitations);
-        const aiResult = includeAi
-          ? (await aiForKey(stored.text).catch(() => ({ ai: null }))).ai
-          : null;
-
-        const ranges = (analysis.results ?? [])
-          .filter((r) => r.similarity >= 15 && Number.isFinite(r.start))
-          .map((r, index) => ({
-            textStart: r.start,
-            textEnd: r.end ?? r.start + r.sentence.length,
-            similarity: r.similarity,
-            color: classify(r.similarity).color,
-            label: String(index + 1),
-          }));
-
-        const marked = await overlayHighlights({
-          pdfBuffer: stored.buffer,
-          layout: stored.layout,
-          ranges,
-          footer: "Tesis Ecuador · Informe de similitud sobre el documento original",
-          onlyMarkedPages: true,
+      const uploadError = await receiveFile(req, res);
+      if (uploadError) {
+        const tooLarge = uploadError.code === "LIMIT_FILE_SIZE";
+        res.status(400).json({
+          error: tooLarge
+            ? `File exceeds the ${Math.round(UPLOAD_LIMITS.maxBytes / 1024 / 1024)}MB limit.`
+            : uploadError.message,
         });
-
-        if (!marked) {
-          console.warn("[report] el documento original no admite marcado directo; se imprime reimpreso");
-        } else {
-          // Summary first, then the submission itself. The summary omits its
-          // reprinted body when the original follows, so the text appears once —
-          // as the author formatted it, with the matches drawn on top. Only the
-          // pages that actually carry a mark travel with the download — a thesis
-          // can run past a hundred pages and the report exists to be read, not
-          // to reproduce the whole submission a second time.
-          const summary = await printWithAppendix(generateReportPdf, {
-            analysis,
-            text: stored.text,
-            meta,
-            ai: aiResult,
-            // La recomendación de cómo bajar el índice se imprime como anexo final,
-            // después de las hojas marcadas del documento original.
-            includeTail: false,
-            originalPageInfo: { totalPages: marked.pages, keptPages: marked.keptPages },
-          });
-
-          const annex = await generateReportTailPdf({ analysis, text: stored.text, meta });
-          const pdf = await mergePdfs([summary, marked.buffer, annex]);
-          if (!pdf) {
-            console.warn("[report] el merge del marcado no produjo PDF; se imprime reimpreso");
-          } else {
-            console.log(
-              `Overlay report generated in ${((Date.now() - started) / 1000).toFixed(1)}s — ` +
-                `${marked.marked} passages marked, ${marked.keptPages.length}/${marked.pages} original pages kept, ` +
-                `${(pdf.length / 1024).toFixed(0)} KB total`
-            );
-
-            sendPdf(res, pdf, `informe-similitud-${verificationCode(stored.text)}.pdf`);
-            return;
-          }
-        }
-      } else if (overlayToken) {
-        console.warn(
-          `[report] overlayToken ${String(overlayToken).slice(0, 8)}… sin layout en memoria ` +
-            "(instancia reciclada o TTL vencido); se imprime el informe reimpreso"
-        );
+        return;
       }
 
-      // Text path: generate a full reprinted report (y respaldo del marcado
-      // cuando el original ya no está disponible o no admite marcas).
-      const { text } = checkTextSchema.parse(req.body);
-      const meta = req.body?.meta ?? {};
-
+      const excludeCitations = asBoolean(req.body?.excludeCitations, false);
+      const meta = parseMeta(req.body?.meta);
+      const includeAi = asBoolean(req.body?.detectAi, true);
+      const token = typeof req.body?.overlayToken === "string" ? req.body.overlayToken : "";
       const started = Date.now();
-      const includeAi = req.body?.detectAi !== false;
+
+      // El documento se reúne de la petición misma cuando viene adjunto: extraer
+      // y marcar en una sola petición quita de en medio el viaje de ida y vuelta
+      // que dejaba al token en una instancia y a la descarga en otra.
+      let original = null;
+      let fallbackText = null;
+
+      if (req.file) {
+        const uploaded = await originalFromUpload(req.file);
+        if (uploaded.layout) original = uploaded;
+        else fallbackText = uploaded.text;
+      } else if (token) {
+        original = takeLayout(token);
+        if (!original) {
+          // El layout vive en la RAM de una instancia efímera: que ya no esté no
+          // significa que el documento no se pueda marcar, sino que la instancia
+          // que lo extrajo se recicló. Antes esto degradaba en silencio al
+          // reimpreso y el estudiante recibía un informe sin su carátula sin que
+          // nadie se enterara; ahora se responde 409 con el motivo y el cliente
+          // reenvía el archivo. El marcado se resuelve entonces en esa única
+          // petición, sin depender de que le toque al mismo contenedor.
+          res.status(409).json({
+            error: "El documento original ya no está disponible. Reenvialo para marcarlo.",
+            code: "overlay-expired",
+          });
+          return;
+        }
+      }
+
+      const text = original?.text ?? fallbackText ?? req.body?.text;
+      const { text: analysed } = checkTextSchema.parse({ text, excludeCitations });
 
       // Reutiliza el análisis de la comprobación en curso (caché por texto) en
       // lugar de volver a escanear la web solo para imprimir el informe.
-      const { analysis } = await analysisForKey(text, excludeCitations);
+      const { analysis } = await analysisForKey(analysed, excludeCitations);
       const aiResult = includeAi
-        ? (await aiForKey(text).catch(() => ({ ai: null }))).ai
+        ? (await aiForKey(analysed).catch(() => ({ ai: null }))).ai
         : null;
 
-      const pdf = await generateReportPdf({ analysis, text, meta, ai: aiResult });
+      if (original) {
+        const built = await printSimilarityReport({ original, analysis, meta, aiResult });
+        if (built) {
+          console.log(
+            `Overlay report generated in ${((Date.now() - started) / 1000).toFixed(1)}s — ` +
+              `${built.marked.marked} passages marked, ` +
+              `${built.marked.keptPages.length}/${built.marked.pages} original pages kept, ` +
+              `${(built.pdf.length / 1024).toFixed(0)} KB total`
+          );
+          res.setHeader("X-Report-Source", "marked");
+          sendPdf(res, built.pdf, `informe-similitud-${verificationCode(analysed)}.pdf`);
+          return;
+        }
+        console.warn("[report] el documento original no admite marcado directo; se imprime reimpreso");
+      }
+
+      // Text path: generate a full reprinted report (y respaldo del marcado
+      // cuando el original no está disponible o no admite marcas).
+      const pdf = await generateReportPdf({ analysis, text: analysed, meta, ai: aiResult });
 
       console.log(
         `Report generated in ${((Date.now() - started) / 1000).toFixed(1)}s — ` +
           `${(pdf.length / 1024).toFixed(0)} KB, ${analysis.plagiarismPercentage}% index`
       );
 
-      const filename = `informe-similitud-${verificationCode(text)}.pdf`;
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.setHeader("Content-Length", pdf.length);
-      res.end(pdf);
+      res.setHeader("X-Report-Source", "reprinted");
+      sendPdf(res, pdf, `informe-similitud-${verificationCode(analysed)}.pdf`);
     } catch (error) {
       if (error?.name === "ZodError") {
         res.status(400).json({ error: error.errors?.[0]?.message ?? "Invalid request" });
@@ -475,15 +638,47 @@ export function registerRoutes(app) {
    */
   app.post("/api/ai-report", async (req, res) => {
     try {
-      const { overlayToken } = req.body ?? {};
-      const meta = req.body?.meta ?? {};
+      const uploadError = await receiveFile(req, res);
+      if (uploadError) {
+        const tooLarge = uploadError.code === "LIMIT_FILE_SIZE";
+        res.status(400).json({
+          error: tooLarge
+            ? `File exceeds the ${Math.round(UPLOAD_LIMITS.maxBytes / 1024 / 1024)}MB limit.`
+            : uploadError.message,
+        });
+        return;
+      }
+
+      const meta = parseMeta(req.body?.meta);
+      const token = typeof req.body?.overlayToken === "string" ? req.body.overlayToken : "";
       const started = Date.now();
 
-      // With a token the report is printed over the author's own PDF; the text
-      // scored is the one extracted from that file, never whatever the client
-      // sends afterwards, or the offsets would no longer match the pages.
-      const stored = overlayToken ? takeLayout(overlayToken) : null;
-      const text = stored ? stored.text : req.body?.text;
+      // Con token o con archivo, el informe se imprime sobre el PDF del autor y
+      // el texto puntuado es el que salió de ese archivo —nunca el que el
+      // cliente mande después—, o los desplazamientos ya no casarían con las
+      // páginas. Sin ninguno de los dos, se puntúa el texto pegado a mano.
+      let original = null;
+      let fallbackText = null;
+
+      if (req.file) {
+        const uploaded = await originalFromUpload(req.file);
+        if (uploaded.layout) original = uploaded;
+        else fallbackText = uploaded.text;
+      } else if (token) {
+        original = takeLayout(token);
+        if (!original) {
+          // Mismo motivo que en `/api/report`: la instancia que extrajo el
+          // archivo ya no existe. Se pide reenviarlo en lugar de entregar en
+          // silencio un informe sin la carátula del trabajo.
+          res.status(409).json({
+            error: "El documento original ya no está disponible. Reenvialo para marcarlo.",
+            code: "overlay-expired",
+          });
+          return;
+        }
+      }
+
+      const text = original?.text ?? fallbackText ?? req.body?.text;
 
       if (typeof text !== "string" || text.trim().length < 100) {
         res.status(400).json({ error: "Se requiere 'text' con al menos 100 caracteres." });
@@ -495,32 +690,16 @@ export function registerRoutes(app) {
       // known). The per-block pass runs only when there is a page to draw it
       // on, because it costs a model call per block.
       const { ai } = await aiForKey(text);
-      const passages = stored ? await passagesForKey(text) : [];
+      const passages = original ? await passagesForKey(text) : [];
 
       let pdf;
+      let source = "reprinted";
 
-      if (stored) {
-        const marked = await overlayHighlights({
-          pdfBuffer: stored.buffer,
-          layout: stored.layout,
-          ranges: passages,
-          footer: "Tesis Ecuador · Indicio de escritura con IA sobre el documento original",
-          onlyMarkedPages: true,
-        });
-
-        if (marked) {
-          const summary = await printWithAppendix(generateAiReportPdf, {
-            ai,
-            text,
-            meta,
-            passages,
-            // La guía de reescritura se imprime como anexo final, tras las hojas
-            // marcadas del documento original.
-            includeTail: false,
-            originalPageInfo: { totalPages: marked.pages, keptPages: marked.keptPages },
-          });
-          const annex = await generateAiReportTailPdf({ ai, text, meta });
-          pdf = await mergePdfs([summary, marked.buffer, annex]);
+      if (original) {
+        const built = await printAiReport({ original, ai, text, meta, passages });
+        if (built) {
+          pdf = built.pdf;
+          source = "marked";
         }
       }
 
@@ -531,9 +710,10 @@ export function registerRoutes(app) {
       console.log(
         `AI report generated in ${((Date.now() - started) / 1000).toFixed(1)}s — ` +
           `${(pdf.length / 1024).toFixed(0)} KB, ${ai.score ?? "n/d"}% indicator, ` +
-          `${passages.length} blocks marked`
+          `${passages.length} blocks marked, ${source}`
       );
 
+      res.setHeader("X-Report-Source", source);
       sendPdf(res, pdf, `informe-ia-${verificationCode(text)}.pdf`);
     } catch (error) {
       console.error("Error generating AI report:", error);
@@ -560,7 +740,7 @@ export function registerRoutes(app) {
     }
   });
 
-  app.post("/api/corpus/index", (req, res) => {
+  app.post("/api/corpus/index", async (req, res) => {
     try {
       const { text, title, author, url, origin } = req.body ?? {};
       if (typeof text !== "string" || text.trim().length < 200) {
@@ -569,6 +749,8 @@ export function registerRoutes(app) {
       }
 
       const result = indexDocument(text, { title, author, url, origin });
+      clearAnalysisCache();
+      await persistCorpus();
       res.json({ ...result, checksum: checksumOf(text) });
     } catch (error) {
       console.error("Error indexing document:", error);
@@ -577,9 +759,13 @@ export function registerRoutes(app) {
   });
 
   /** Erasure: a stored submission must be removable on request. */
-  app.delete("/api/corpus/:checksum", (req, res) => {
+  app.delete("/api/corpus/:checksum", async (req, res) => {
     try {
       const removed = forget(req.params.checksum);
+      if (removed) {
+        clearAnalysisCache();
+        await persistCorpus();
+      }
       res.status(removed ? 200 : 404).json({ removed });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -601,6 +787,8 @@ export function registerRoutes(app) {
         maxRecords: Math.min(Number(maxRecords) || 200, 5_000),
       });
 
+      clearAnalysisCache();
+      await persistCorpus();
       res.json({ repository: identity.name, ...result });
     } catch (error) {
       console.error("Error harvesting repository:", error);

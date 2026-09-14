@@ -1,0 +1,16 @@
+# Qué NO se sube a Cloud Build cuando la imagen se compila en remoto.
+#
+# `gcloud builds submit` ignora `.dockerignore` —ese lo lee Docker— y sin este
+# archivo subiría node_modules, la caché de modelos y las bases del corpus solo
+# para que la receta los descarte. Las mismas exclusiones, en el formato que sí
+# lee Cloud Build, para que el contexto que viaja sea el del código.
+node_modules
+dist
+.models
+data
+.git
+.gitignore
+.env
+.env.*
+*.log
+docs/muestras

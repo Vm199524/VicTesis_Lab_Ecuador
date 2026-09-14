@@ -11,6 +11,8 @@ const SUITES = [
   ["unidad", "corpus.test.mjs"],
   ["unidad", "report.test.mjs"],
   ["unidad", "layout.test.mjs"],
+  ["unidad", "docx-overlay.test.mjs"],
+  ["rutas",  "report-routes.test.mjs"],
   ["unidad", "ai-detect.test.mjs"],
   ["red",    "providers-oa.test.mjs"],
   ["red",    "harvest.test.mjs"],

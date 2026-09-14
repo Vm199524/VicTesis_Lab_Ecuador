@@ -1,6 +1,7 @@
 import express from "express";
 import { registerRoutes } from "./routes.js";
 import { setupVite, serveStatic, log } from "./vite.js";
+import { initCorpusStorage } from "./corpus.js";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -37,6 +38,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await initCorpusStorage();
   const server = registerRoutes(app);
 
   app.use((err, _req, res, _next) => {

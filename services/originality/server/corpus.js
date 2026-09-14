@@ -19,12 +19,62 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { Storage } from "@google-cloud/storage";
 
 import { tokenize, winnow } from "./text.js";
 
 const DB_PATH = process.env.CORPUS_DB || "./data/corpus.db";
+
+/**
+ * Cloud Run's filesystem is read-only outside /tmp, and /tmp is wiped on
+ * every new revision or scale-to-zero -- so CORPUS_DB alone does not survive
+ * a redeploy. When CORPUS_BUCKET is set, the whole .db file is shipped to
+ * Cloud Storage as a plain object after every write and pulled back down
+ * once at boot.
+ *
+ * This is deliberately NOT a Cloud Storage FUSE volume mount: GCS FUSE gives
+ * SQLite no real file locking, and running WAL mode over it is a documented
+ * way to corrupt the database. Whole-file upload/download has none of that
+ * risk -- it's the same operation as backing up the file by hand, just
+ * automatic.
+ */
+const BUCKET_NAME = process.env.CORPUS_BUCKET || "";
+const BUCKET_OBJECT = process.env.CORPUS_BUCKET_OBJECT || "corpus.db";
+const storage = BUCKET_NAME ? new Storage() : null;
+
+/** Pull the last persisted corpus down before the first query touches it. Call once at boot. */
+export async function initCorpusStorage() {
+  if (!storage) return;
+  if (existsSync(DB_PATH)) return; // a local copy already exists (e.g. re-entry); don't clobber it
+
+  mkdirSync(dirname(DB_PATH), { recursive: true });
+  try {
+    await storage.bucket(BUCKET_NAME).file(BUCKET_OBJECT).download({ destination: DB_PATH });
+    console.log(`Corpus restaurado desde gs://${BUCKET_NAME}/${BUCKET_OBJECT}`);
+  } catch (error) {
+    if (error.code === 404) {
+      console.log(`Sin corpus previo en gs://${BUCKET_NAME}/${BUCKET_OBJECT}; arranca vacio.`);
+    } else {
+      console.error("No se pudo restaurar el corpus desde Cloud Storage:", error.message);
+    }
+  }
+}
+
+/** Ship the current .db file to Cloud Storage. Call after any write (index/forget/harvest). */
+export async function persistCorpus() {
+  if (!storage) return;
+  const database = connect();
+  // Fold the WAL back into the main file so the single uploaded object is
+  // self-contained -- the bucket never needs the companion -wal/-shm files.
+  database.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  try {
+    await storage.bucket(BUCKET_NAME).upload(DB_PATH, { destination: BUCKET_OBJECT });
+  } catch (error) {
+    console.error("No se pudo persistir el corpus en Cloud Storage:", error.message);
+  }
+}
 
 /** Fingerprints shared before two documents are considered related at all. */
 const MIN_SHARED_FINGERPRINTS = 3;

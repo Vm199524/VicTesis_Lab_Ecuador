@@ -116,16 +116,29 @@ function rectanglesFor(range, items) {
  *   report just to carry three marked pages defeats the point of a report
  *   someone is meant to actually read. Footer stamping still runs against every
  *   original page first, so a kept page keeps its true page number.
- * @returns {Promise<{buffer: Buffer, pages: number, marked: number, keptPages: number[]}|null>}
- *   The marked-up PDF, how many ranges actually landed on a page, and the
- *   1-based original page numbers the returned buffer contains (all of them,
- *   in original order, unless `onlyMarkedPages` trimmed it) — or null when the
- *   input is not a PDF and so carries no geometry to draw on. `marked` is worth
- *   checking: a zero there means the overlay produced a clean copy of the
- *   original, which the caller probably wants to report rather than pass off as
- *   a highlighted document.
+ * @param {boolean}  [options.keepCover] With `onlyMarkedPages`, keep the first
+ *   page even when it carries no mark. The cover names the document — whose
+ *   thesis the report is about — and it is the page a reviewer looks at first,
+ *   so a trimmed appendix that jumps straight to a marked paragraph reads as a
+ *   fragment rather than as a report on that submission.
+ * @returns {Promise<{buffer: Buffer, pages: number, marked: number, markedPages: number[], keptPages: number[]}|null>}
+ *   The marked-up PDF, how many ranges actually landed on a page, the 1-based
+ *   original page numbers that carry at least one mark, and the page numbers the
+ *   returned buffer contains (all of them, in original order, unless
+ *   `onlyMarkedPages` trimmed it — in which case `keptPages` can hold one page
+ *   more than `markedPages`, the cover) — or null when the input is not a PDF and
+ *   so carries no geometry to draw on. `marked` is worth checking: a zero there
+ *   means the overlay produced a clean copy of the original, which the caller
+ *   probably wants to report rather than pass off as a highlighted document.
  */
-export async function overlayHighlights({ pdfBuffer, layout, ranges = [], footer, onlyMarkedPages = false }) {
+export async function overlayHighlights({
+  pdfBuffer,
+  layout,
+  ranges = [],
+  footer,
+  onlyMarkedPages = false,
+  keepCover = false,
+}) {
   if (!pdfBuffer || pdfBuffer.length === 0) return null;
   if (!layout || !Array.isArray(layout.items) || layout.items.length === 0) return null;
 
@@ -247,11 +260,14 @@ export async function overlayHighlights({ pdfBuffer, layout, ranges = [], footer
 
   // Trimming happens last, after every page already carries its highlights and
   // its true footer number, so dropping a page never renumbers the ones that
-  // remain. When nothing was marked the appendix is trimmed to zero pages too:
-  // a report exists to be read, not to reproduce the whole submission, and a
-  // clean page does not belong to this download any more than an unmarked one.
+  // remain. When nothing was marked the appendix is trimmed to zero pages too
+  // (or to the cover alone): a report exists to be read, not to reproduce the
+  // whole submission, and a clean page does not belong to this download any
+  // more than an unmarked one. The cover is the one deliberate exception.
   if (onlyMarkedPages && markedPages.size < pages.length) {
-    keptPages = [...markedPages].sort((a, b) => a - b);
+    const keep = new Set(markedPages);
+    if (keepCover) keep.add(1);
+    keptPages = [...keep].sort((a, b) => a - b);
     const trimmed = await PDFDocument.create();
     if (keptPages.length > 0) {
       const copied = await trimmed.copyPages(
@@ -264,5 +280,11 @@ export async function overlayHighlights({ pdfBuffer, layout, ranges = [], footer
   }
 
   const bytes = await output.save();
-  return { buffer: Buffer.from(bytes), pages: pages.length, marked, keptPages };
+  return {
+    buffer: Buffer.from(bytes),
+    pages: pages.length,
+    marked,
+    markedPages: [...markedPages].sort((a, b) => a - b),
+    keptPages,
+  };
 }

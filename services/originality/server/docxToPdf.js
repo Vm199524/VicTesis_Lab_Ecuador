@@ -21,7 +21,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-const CONVERT_TIMEOUT_MS = 45_000;
+// Holgado a propósito: la primera conversión de una instancia en frío arranca
+// LibreOffice entero (perfil, fuentes, filtros) y una tesis con imágenes y
+// tablas tarda en maquetarse. Un corte demasiado pronto devolvería el informe
+// reimpreso sin que nada estuviera realmente roto.
+const CONVERT_TIMEOUT_MS = 90_000;
 
 /** Checked in order; the first one that exists and runs wins. Overridable via env for deployments that install LibreOffice somewhere else. */
 function candidateBinaries() {

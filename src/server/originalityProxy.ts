@@ -76,7 +76,10 @@ function corsHeadersFor(req: Request): Record<string, string> {
     // Sin esto, el navegador no deja leer content-disposition en la respuesta
     // cross-origin y la descarga usa el nombre por defecto. Se expone para que
     // el PDF baje con su nombre real (informe-similitud-XXXX.pdf, etc.).
-    'Access-Control-Expose-Headers': 'Content-Disposition',
+    // `X-Report-Source` dice si el informe lleva el documento original marcado o
+    // si hubo que reimprimirlo: sin exponerla, el cliente no puede avisar de un
+    // reimpreso inesperado y el estudiante lo descubre al abrir el PDF.
+    'Access-Control-Expose-Headers': 'Content-Disposition, X-Report-Source',
     'Access-Control-Max-Age': '86400',
   };
 }
@@ -141,8 +144,10 @@ async function forward(req: Request, res: Response, endpoint: string): Promise<v
 
     res.status(upstream.status);
 
-    // El informe vuelve como PDF: se conservan tipo y nombre de archivo.
-    const passthrough = ['content-type', 'content-disposition', 'content-length'];
+    // El informe vuelve como PDF: se conservan tipo, nombre de archivo y el
+    // origen del informe (`x-report-source`), que el cliente lee para avisar
+    // cuando el original no pudo marcarse.
+    const passthrough = ['content-type', 'content-disposition', 'content-length', 'x-report-source'];
     for (const header of passthrough) {
       const value = upstream.headers.get(header);
       if (value) res.setHeader(header, value);

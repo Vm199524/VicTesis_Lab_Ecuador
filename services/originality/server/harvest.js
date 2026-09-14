@@ -154,6 +154,14 @@ export async function harvestRepository(endpoint, options = {}) {
 
     const oaiError = xml.match(/<error[^>]*code=["']([^"']+)["'][^>]*>([\s\S]*?)<\/error>/);
     if (oaiError) {
+      // Walking year by year necessarily hits years with nothing in them (the
+      // current year before anyone has submitted, a founding year before the
+      // repository existed). That is not a reason to give up on the rest of
+      // the queue -- only report it as a dead end once every window is spent.
+      if (oaiError[1] === "noRecordsMatch" && windowQueue?.length) {
+        url = nextWindowUrl();
+        continue;
+      }
       errors.push(`OAI ${oaiError[1]}: ${decode(oaiError[2])}`);
       break;
     }

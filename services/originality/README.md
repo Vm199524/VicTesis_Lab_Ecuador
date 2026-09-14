@@ -25,7 +25,7 @@ Es un servicio independiente (Express + SQLite + modelos ONNX) que el portal con
 - **Coincidencia semántica**: además de la coincidencia literal, detecta paráfrasis mediante un modelo semántico multilingüe.
 - **Informes PDF**: descarga de informes de similitud (y de IA) con marca de verificación, detalle por fuente y desglose.
 - **Soporte de archivos**: `.txt`, `.md`, `.doc`, `.docx`, `.rtf` y `.pdf` (hasta 25 MB).
-- **Extracción fiel de PDF**: cuando el documento original tiene geometría de página, el informe se dibuja sobre el PDF tal como se subió.
+- **Extracción fiel del original**: cuando el documento tiene geometría de página, el informe se dibuja sobre el original tal como se subió. Un `.docx` se convierte antes a PDF con **LibreOffice** (`server/docxToPdf.js`), así se conservan **carátula, encabezados, pies y tablas** y las coincidencias se marcan con colores sobre esa maqueta, no sobre un informe reimpreso.
 
 ---
 
@@ -33,7 +33,7 @@ Es un servicio independiente (Express + SQLite + modelos ONNX) que el portal con
 
 - **Servidor:** Node.js 22.5+ · Express · SQLite nativo (`node:sqlite`, corpus y reportes).
 - **IA / NLP:** `@huggingface/transformers` (ONNX): modelo semántico multilingüe para similitud y modelo `Qwen2.5` (0.5B) para la estimación de contenido IA.
-- **Extracción:** `pdfjs-dist` (PDF), `mammoth` / `word-extractor` (Word), `multer` (subida).
+- **Extracción:** `pdfjs-dist` (PDF), `mammoth` / `word-extractor` (Word), **LibreOffice headless** (DOCX→PDF fiel), `multer` (subida).
 - **Informes PDF:** render HTML a PDF con **Puppeteer** (Chromium headless).
 - **Cliente:** React + Vite + Tailwind (interfaz propia del detector, opcional en despliegue).
 
@@ -41,7 +41,13 @@ Es un servicio independiente (Express + SQLite + modelos ONNX) que el portal con
 
 ## 🚀 Puesta en marcha
 
-**Requisitos:** Node.js ≥ 22.5 (usa el módulo nativo `node:sqlite`) y npm.
+**Requisitos:**
+
+- Node.js ≥ 22.5 (usa el módulo nativo `node:sqlite`).
+- **LibreOffice** (`soffice` en el `PATH`) solo para marcar sobre el original de
+  un `.docx`. Si no está, todo lo demás funciona y el informe de un `.docx` sale
+  como informe reimpreso. En Debian/Ubuntu: `apt-get install libreoffice-writer`
+  (la imagen de Cloud Run ya lo incluye). Ruta explícita: `SOFFICE_PATH`.
 
 ```bash
 npm install
@@ -69,6 +75,8 @@ En el primer uso que requiera modelos ONNX, se descargan a la carpeta de caché 
 | `SEMANTIC_MODEL` | No | Modelo semántico (por defecto `Xenova/paraphrase-multilingual-MiniLM-L12-v2`). |
 | `SEMANTIC_DISABLED=1` | No | Desactiva la coincidencia semántica. |
 | `CORPUS_DB` | No | Ruta de la base del corpus local (por defecto `./data/corpus.db`; en Cloud Run el `Dockerfile` la fija a `/tmp/originality/corpus.db` porque la raíz es de solo lectura). |
+| `SOFFICE_PATH` | No | Ruta del binario de LibreOffice (`/usr/bin/soffice` en el contenedor). Si se omite, se buscan las rutas habituales. |
+| `HOME` / `XDG_CACHE_HOME` | No | En Cloud Run apuntan a `/tmp` para que LibreOffice pueda escribir su perfil y su caché de fuentes en un sistema de solo lectura. |
 | `MAX_CHARS` / `MAX_CHUNKS` | No | Límites de texto y de bloques analizados. |
 | `CORE_API_KEY` / `SEMANTIC_SCHOLAR_API_KEY` | No | Claves opcionales de proveedores para ampliar cobertura. |
 
@@ -78,24 +86,47 @@ En el primer uso que requiera modelos ONNX, se descargan a la carpeta de caché 
 
 Incluye un `Dockerfile` pensado para **Cloud Run** (imagen sobre base debian/glibc con las librerías de Chromium que exige Puppeteer). Despliegue de referencia:
 
+La vía rápida es el guión de la raíz del repo (compila la imagen una sola vez y
+despliega por `--image`):
+
+```bash
+bash deploy.sh detector
+```
+
+Equivale a (desde `services/originality/`, si se prefiere el despliegue directo):
+
 ```bash
 gcloud run deploy portaltesis-originalidad \
   --source . \
   --region europe-west1 \
   --allow-unauthenticated --quiet \
-  --memory 4Gi --cpu 1 --concurrency 1 --max-instances 2 --timeout 900
+  --memory 8Gi --cpu 2 --concurrency 1 --max-instances 2 --timeout 900
 ```
 
-> **Memoria:** 4 GiB porque el runtime ONNX de transformers.js reserva varios GB
-> por instancia al cargar el modelo semántico (probado: 1 GiB y 2 GiB revientan
-> con OOM). `concurrency 1` evita que dos análisis solapen sus ~3 GiB en un mismo
-> contenedor. Con `min-instances 0` no hay coste en reposo.
+> **Memoria:** 8 GiB porque el runtime ONNX de transformers.js reserva varios GB
+> por instancia (probado: 1 y 2 GiB revientan con OOM) y a eso se suma el
+> marcado del original —Chromium de Puppeteer renderizando el PDF completo— y el
+> perfil de LibreOffice al convertir un `.docx`. Con 4 GiB el contenedor llegó a
+> ser reiniciado por OOM durante análisis largos, y al reciclarse la instancia se
+> pierde el estado en memoria (los `overlayToken` dejan de existir). `concurrency 1`
+> evita que dos análisis solapen su consumo en un mismo contenedor. Con
+> `min-instances 0` no hay coste en reposo.
 >
-> **Documentos largos (desplegado):** un texto de ~100 mil caracteres con la
-> concurrencia por defecto supera los 4 GiB de memoria; el servicio desplegado
-> usa `MAX_CHUNKS=48` (muestreo representativo de un documento completo) y
-> `FETCH_CONCURRENCY=4` — un análisis así tarda ~6 min y cabe en el timeout de
-> 900 s. El portal espera hasta 850 s (`ORIGINALITY_TIMEOUT_MS`).
+> **Estado en memoria.** Los `overlayToken` que permiten marcar sobre el original
+> viven en la RAM de la instancia (TTL 30 min) porque el sistema de archivos de
+> Cloud Run es efímero. Si la instancia se recicla, el portal **vuelve a extraer
+> el archivo** y reintenta; si aun así no hay original disponible, el informe sale
+> como reimpreso en lugar de fallar con un error de token inválido.
+>
+> **Imagen.** El `Dockerfile` instala Chromium (Puppeteer), `libreoffice-writer`
+> —conversión fiel de `.docx`— y las fuentes `fonts-crosextra-carlito`/`caladea`,
+> sustitutas métricamente compatibles de Calibri y Cambria, las tipografías
+> habituales de las tesis: sin ellas el maquetado se desplaza al convertir.
+>
+> **Documentos largos (desplegado):** el servicio usa `MAX_CHUNKS=48` (muestreo
+> representativo de un documento completo) y `FETCH_CONCURRENCY=4` — un análisis
+> así tarda ~6 min y cabe en el timeout de 900 s. El portal espera hasta 850 s
+> (`ORIGINALITY_TIMEOUT_MS`).
 > La primera petición tras un arranque en frío descarga el modelo a
 > `TRANSFORMERS_CACHE` (~40–60 s); las siguientes son instantáneas mientras la
 > instancia vive.
@@ -120,6 +151,7 @@ services/originality/
 │  ├─ semantic.js     # similitud semántica (paráfrasis) con ONNX
 │  ├─ ai-detect.js    # estimación de contenido generado por IA
 │  ├─ report.js       # informe PDF (Puppeteer)
+│  ├─ docxToPdf.js    # DOCX→PDF con LibreOffice (conserva la maqueta original)
 │  └─ routes.js       # registro de rutas /api/*
 ├─ client/            # interfaz propia del detector (React + Vite)
 ├─ shared/            # esquemas y utilidades compartidas

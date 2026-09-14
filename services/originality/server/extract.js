@@ -6,6 +6,8 @@
  * plus whatever metadata the format exposes.
  */
 
+import { createHash } from "node:crypto";
+
 const MAMMOTH_STYLE_MAP = [
   "p[style-name='Quote'] => blockquote",
   "p[style-name='Intense Quote'] => blockquote",
@@ -174,6 +176,67 @@ function sniff(buffer) {
 }
 
 export const SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".rtf", ".txt", ".md"];
+
+// ---------------------------------------------------------------------------
+// Memoria de extracciones
+//
+// Extraer con geometría es la etapa más cara del servicio: un PDF se recorre
+// página a página con pdf.js y un .docx pasa antes por LibreOffice, que en una
+// instancia en frío arranca el programa entero. El mismo archivo se extrae más
+// de una vez en un flujo normal —al subirlo y, si la instancia que atendió la
+// descarga no era la que lo recibió, al pedir el informe—, y la segunda vez no
+// tiene por qué costar lo mismo que la primera.
+//
+// La clave es el contenido, no el nombre: dos subidas del mismo archivo
+// comparten entrada aunque el estudiante lo haya renombrado. Solo se guarda lo
+// que trae geometría, que es lo caro y lo único que un informe puede reutilizar.
+// ---------------------------------------------------------------------------
+
+/** Presupuesto total; el archivo más grande que se cachea es el que quepa aquí. */
+const LAYOUT_CACHE_MAX_BYTES = 192 * 1024 * 1024;
+const LAYOUT_CACHE_MAX_ENTRIES = 16;
+
+/** @type {Map<string, {value: object, bytes: number}>} */
+const layoutCache = new Map();
+let layoutCacheBytes = 0;
+
+/**
+ * Identifica una extracción por el contenido del archivo.
+ *
+ * La extensión entra en la clave porque decide la rama de `extractDocumentLayout`
+ * —un ZIP es .docx solo si su nombre lo dice—, de modo que el mismo contenido
+ * con dos nombres no puede compartir un resultado que no le corresponde.
+ */
+function layoutCacheKey(buffer, filename) {
+  const ext = (filename.match(/\.[^.]+$/)?.[0] || "").toLowerCase();
+  return createHash("sha1").update(ext).update("\0").update(buffer).digest("hex");
+}
+
+function rememberLayout(key, value) {
+  const bytes = value.buffer?.length ?? 0;
+  // Un solo archivo que ya no cabe: no se guarda, pero tampoco se descarta la
+  // memoria que ya había, que sigue sirviendo a los demás.
+  if (bytes > LAYOUT_CACHE_MAX_BYTES) return;
+
+  const previous = layoutCache.get(key);
+  if (previous) {
+    layoutCacheBytes -= previous.bytes;
+    layoutCache.delete(key);
+  }
+
+  layoutCache.set(key, { value, bytes });
+  layoutCacheBytes += bytes;
+
+  while (
+    layoutCache.size > LAYOUT_CACHE_MAX_ENTRIES ||
+    layoutCacheBytes > LAYOUT_CACHE_MAX_BYTES
+  ) {
+    const oldest = layoutCache.keys().next().value;
+    const entry = layoutCache.get(oldest);
+    layoutCacheBytes -= entry.bytes;
+    layoutCache.delete(oldest);
+  }
+}
 
 /**
  * Extract plain text from an uploaded document buffer.
@@ -493,6 +556,26 @@ export async function extractDocumentLayout(buffer, filename = "") {
     throw new Error("The uploaded file is empty");
   }
 
+  const key = layoutCacheKey(buffer, filename);
+  const cached = layoutCache.get(key);
+  if (cached) {
+    // Reciente otra vez: al final de la cola, para que el desalojo por tamaño
+    // saque primero lo que nadie ha vuelto a pedir.
+    layoutCache.delete(key);
+    layoutCache.set(key, cached);
+    return cached.value;
+  }
+
+  const result = await extractDocumentLayoutUncached(buffer, filename);
+  // Solo se recuerda lo que trae geometría: es lo que cuesta (LibreOffice, el
+  // recorrido de pdf.js página a página) y lo único que un informe puede
+  // reutilizar. Un intento fallido no se memoriza para que instalar LibreOffice
+  // más tarde surta efecto sin reiniciar el proceso.
+  if (result.layout) rememberLayout(key, result);
+  return result;
+}
+
+async function extractDocumentLayoutUncached(buffer, filename = "") {
   if (sniff(buffer) === "pdf") {
     const { text, meta, pages, items } = await extractPdfWithLayout(buffer);
     return { text, format: "pdf", meta, layout: { pages, items }, pdfBuffer: buffer };

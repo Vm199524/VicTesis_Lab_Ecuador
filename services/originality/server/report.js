@@ -65,19 +65,34 @@ function escapeHtml(value) {
  * document that jumps from page 3 to page 12 without a word of warning reads
  * as broken, not as edited on purpose.
  *
- * @param {{totalPages: number, keptPages: number[]}|null} info
+ * @param {{totalPages: number, keptPages: number[], markedPages?: number[]}|null} info
+ *   `markedPages` matters because the cover travels unmarked (`keepCover`), and
+ *   naming it among the matches would be a lie about a page nobody flagged.
  * @returns {string} A sentence naming what is included, or "" when there is
- *   nothing to explain (no page info, or every page survived the trim).
+ *   nothing to explain (no page info, every page survived the trim, or nothing
+ *   at all travelled — the caller already explains that case in its own words).
  */
 function describeKeptPages(info) {
   if (!info || !Array.isArray(info.keptPages) || !Number.isFinite(info.totalPages)) return "";
   if (info.keptPages.length >= info.totalPages) return "";
   if (info.keptPages.length === 0) return "";
 
-  const listed = info.keptPages.slice(0, 12).join(", ");
-  const rest = info.keptPages.length > 12 ? ` y ${info.keptPages.length - 12} mas` : "";
+  const marked = Array.isArray(info.markedPages) ? info.markedPages : info.keptPages;
 
-  return ` Para no adjuntar el documento completo, solo se incluyen las <b>${info.keptPages.length} de ${info.totalPages} paginas</b> del original que presentaron una marca (pagina${info.keptPages.length === 1 ? "" : "s"} ${listed}${rest}); cada una conserva su numero de pagina real para que la ubique en su archivo. El resto no tuvo coincidencias y no aparece en esta descarga.`;
+  // La carátula viaja sola: no hubo ninguna coincidencia que marcar sobre ella
+  // ni sobre el resto del documento.
+  if (marked.length === 0) {
+    return ` Ninguna pagina del original presento una coincidencia que marcar, asi que de el solo se adjunta la <b>caratula</b> (pagina 1), que es la que identifica el trabajo; reproducir la tesis completa no aportaria evidencia.`;
+  }
+
+  const listed = marked.slice(0, 12).join(", ");
+  const rest = marked.length > 12 ? ` y ${marked.length - 12} mas` : "";
+  const cover =
+    info.keptPages.includes(1) && !marked.includes(1)
+      ? " y la <b>caratula</b> (pagina 1), que va sin marca pero identifica el trabajo"
+      : "";
+
+  return ` Para no adjuntar el documento completo, se incluyen <b>${info.keptPages.length} de ${info.totalPages} paginas</b> del original: las que presentaron una marca (pagina${marked.length === 1 ? "" : "s"} ${listed}${rest})${cover}. Cada una conserva su numero de pagina real para que la ubique en su archivo; el resto no tuvo coincidencias y no aparece en esta descarga.`;
 }
 
 function hostOf(url) {

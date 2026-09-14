@@ -439,8 +439,9 @@ export const OriginalityChecker: React.FC = () => {
 
           {/* Cuando la extracción guardó geometría de página, ambos informes ya
               adjuntan el documento original marcado; el botón aparte que hacía
-              solo eso desapareció por redundante. Un texto pegado o un .docx no
-              tienen coordenadas, así que ahí el informe sale reimpreso. */}
+              solo eso desapareció por redundante. La geometría la tiene un PDF
+              subido tal cual (Word queda anulado por ahora). Un texto pegado o
+              un .txt no tienen coordenadas, y ahí el informe sale reimpreso. */}
           {doc?.overlayToken ? (
             <p className="text-[12px] text-slate-500 -mt-1.5">{t('plag.overlayIncluded')}</p>
           ) : (

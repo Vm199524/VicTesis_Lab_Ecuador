@@ -35,9 +35,15 @@ STAMP="$(date +%Y%m%d%H%M%S)"
 say()  { printf '\033[1;36m== %s ==\033[0m\n' "$*" >&2; }
 usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; }
 
+# ¿Hay un Docker local utilizable?
+#
+# El `timeout` no es paranoia: un daemon a medio morir —BuildKit que se cae al
+# exportar, Docker Desktop trabado— deja `docker info` colgado en vez de
+# devolver un error, y sin límite el despliegue se queda esperando a un Docker
+# que ya no va a responder. Ante la duda, se compila en Cloud Build.
 docker_up() {
   command -v docker >/dev/null 2>&1 || return 1
-  docker info >/dev/null 2>&1
+  timeout 15 docker info >/dev/null 2>&1
 }
 
 # Compila y empuja la imagen <name> desde <dir>. Deja la referencia en $_TAG.
@@ -77,10 +83,18 @@ cmd_portal() {
 cmd_detector() {
   build_and_push portaltesis-originalidad services/originality
   say "Desplegando portaltesis-originalidad por imagen (8 GiB)"
+  # `--session-affinity` importa más de lo que parece: el documento que se marca
+  # vive en la RAM de una instancia, y sin afinidad la subida y la descarga del
+  # informe pueden caer en contenedores distintos. Con ella lo habitual es que
+  # las dos peticiones del mismo estudiante las atienda la misma instancia; si
+  # aun así se recicla, el servicio responde 409 y el cliente reenvía el
+  # archivo, así que nunca se degrada en silencio.
   gcloud run deploy portaltesis-originalidad \
     --image "$_TAG" --region "$REGION" --project "$PROJECT" \
     --allow-unauthenticated --quiet \
-    --memory 8Gi --cpu 2 --concurrency 1 --max-instances 2 --timeout 900
+    --session-affinity \
+    --memory 8Gi --cpu 2 --concurrency 1 --max-instances 2 --timeout 900 \
+    --update-env-vars CORPUS_BUCKET=portal-tesis-ecuador-508108-corpus
 }
 
 cmd_status() {
